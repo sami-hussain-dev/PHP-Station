@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+  <title id="t">PHP Station</title>
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f7f9"/>
+      <stop offset=".55" stop-color="#c9ccd2"/>
+      <stop offset="1" stop-color="#8f949d"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#s)"/>
+  <rect x="1" y="1" width="62" height="62" rx="17" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="2"/>
+  <path d="M19 22l10 10-10 10M34 43h12" fill="none" stroke="#0b0c0e" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

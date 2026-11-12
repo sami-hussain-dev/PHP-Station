@@ -1,0 +1,20 @@
+# Runtime data of a local PHP Station (project list, settings, logs, .env backups,
+# DB instances, phpMyAdmin secret, guard exe) - never commit
+data/
+data-*/
+# PHP / MariaDB / Composer / Node / phpMyAdmin installed by PHP Station
+runtimes/
+# DB dumps and snapshots (contain real data)
+backups/
+devpanel-backups/
+*.sql
+*.log
+node_modules/
+# temporary build output of the shutdown guard
+*.tmp.exe
+# OS / editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/

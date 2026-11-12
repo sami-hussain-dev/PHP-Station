@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sami-hussain-dev.github.io/PHP-Station/sitemap.xml

@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use or mention PHP Station, please cite it as below."
+title: "PHP Station"
+abstract: "A free, zero-dependency local PHP development environment for Windows that runs many PHP and Laravel projects side by side, each with its own PHP version, Composer and MariaDB server, with crash-safe databases, automatic backups and one-click repair."
+type: software
+authors:
+  - given-names: Sami
+    family-names: Hussain
+    affiliation: x8code
+    website: "https://x8code.com"
+version: 1.2.0
+date-released: "2026-11-12"
+license: MIT
+repository-code: "https://github.com/sami-hussain-dev/PHP-Station"
+url: "https://sami-hussain-dev.github.io/PHP-Station/"
+keywords:
+  - php
+  - laravel
+  - windows
+  - local development environment
+  - xampp alternative
+  - laragon alternative
+  - mariadb
+  - composer
+  - phpmyadmin

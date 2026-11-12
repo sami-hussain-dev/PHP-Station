@@ -1,0 +1,28 @@
+# PHP Station
+
+> PHP Station is a free, open-source (MIT), zero-dependency local PHP development environment and control panel for Windows 10/11. It runs many PHP and Laravel projects at the same time, each with its own PHP version, Composer and MariaDB/MySQL server, on 127.0.0.1 only. It is an alternative to XAMPP and Laragon and can also use existing XAMPP/Laragon/WAMP installs.
+
+Key facts:
+- Platform: Windows 10/11 x64. Runtime: Node.js 18+ with no npm dependencies; the panel starts with `PHP-Station.bat`. Panel URL: http://127.0.0.1:7070/.
+- Per-project PHP: each project gets its own php.exe, port and Composer; versions run side by side (for example PHP 8.0 for Laravel 8 next to PHP 8.3 for Laravel 12). The right PHP is suggested from composer.json and the Laravel version.
+- Installer and setup wizard: PHP 7.4–8.5 from windows.php.net, MariaDB 10.4–12.x from mariadb.org, Composer from getcomposer.org, phpMyAdmin from phpmyadmin.net. Every download is SHA-256 verified. No admin rights, no PATH changes. MySQL is not downloaded (no automated download, no SHA-256 from Oracle); MariaDB is used as a drop-in replacement.
+- Databases: graceful start/stop of any MariaDB/MySQL install, new isolated server instances on their own port, built-in phpMyAdmin with every server listed, and DB Move with row-count verification.
+- Crash safety: a shutdown guard (PHPStationGuard.exe) stops DB servers cleanly on Windows shutdown/sign-out (the usual cause of "MySQL shutdown unexpectedly" in XAMPP); automatic data-folder snapshots before start; daily .sql dumps; one-click repair from the error log (aria_chk, myisamchk, system tables rebuilt from a template, mariadb-check); InnoDB rescue on a copy with innodb_force_recovery 1–6. Existing data is never deleted or overwritten.
+- Security: listens on 127.0.0.1 only, Host/Origin checks, a per-start API token, strict CSP; DB passwords are never stored or logged.
+- UI languages: English, Roman Urdu, Urdu (RTL). Themes: dark (black) and light (silver).
+- Author: Sami Hussain (x8code, https://x8code.com). License: MIT.
+
+## Docs
+- [README](https://github.com/sami-hussain-dev/PHP-Station/blob/master/README.md): features, screenshots, quick start, FAQ, comparison with XAMPP and Laragon
+- [Roman Urdu guide](https://github.com/sami-hussain-dev/PHP-Station/blob/master/PEHLE-YE-PARHEIN.txt): step-by-step usage in Roman Urdu
+- [Changelog](https://github.com/sami-hussain-dev/PHP-Station/blob/master/CHANGELOG.md)
+- [Security policy](https://github.com/sami-hussain-dev/PHP-Station/blob/master/SECURITY.md)
+
+## Source
+- [server.js](https://github.com/sami-hussain-dev/PHP-Station/blob/master/server.js): CLI (--launch/--serve/--stop) and the local HTTP API
+- [lib/](https://github.com/sami-hussain-dev/PHP-Station/tree/master/lib): projects, runtimes, DB servers, backups, repair, installer, wizard, phpMyAdmin, shutdown guard
+- [public/](https://github.com/sami-hussain-dev/PHP-Station/tree/master/public): vanilla-JS single-page UI (no framework, no build step)
+
+## Optional
+- [Website](https://sami-hussain-dev.github.io/PHP-Station/)
+- [Issues](https://github.com/sami-hussain-dev/PHP-Station/issues)

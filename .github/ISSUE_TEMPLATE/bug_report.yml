@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please remove private paths, project names and passwords from logs before posting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a project …
+        2. Choose PHP 8.3 …
+        3. Switch it on …
+  - type: input
+    id: version
+    attributes:
+      label: PHP Station version
+      description: Shown in Settings → About and in the sidebar footer.
+      placeholder: v1.2.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Projects / PHP
+        - DB servers / MariaDB / MySQL
+        - Backups / Repair / Rescue
+        - phpMyAdmin
+        - Setup wizard / Installer
+        - UI / Translation
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: data\logs\panel.log, the job log, or the DB error log (DB Servers → Log).
+      render: text

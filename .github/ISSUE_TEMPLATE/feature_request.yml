@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an idea for PHP Station
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+      description: Describe your workflow and what is missing or slow today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How should it work in PHP Station?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you do it today?
+      description: For example in XAMPP, Laragon or by hand.

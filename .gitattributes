@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+# Windows scripts need CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.cs  text eol=crlf
+PEHLE-YE-PARHEIN.txt text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
+*.exe binary
+
+# GitHub language stats: tests and docs are not "the product"
+docs/** linguist-documentation
+tests/fixtures/** linguist-vendored

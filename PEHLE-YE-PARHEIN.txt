@@ -1,0 +1,211 @@
+==========================================================================
+  PHP Station 1.2  -  PEHLE YE PARHEIN   (pehle naam: DevPanel)
+==========================================================================
+PHP Station kya hai?
+  Aik local control panel jis se aap kai PHP projects aik sath chala sakte
+  hain - har project apne PHP version, apne Composer aur apne MariaDB/MySQL
+  server ke sath. Har project ko apna port milta hai, Run/Stop ka aik
+  button hai, aur project list yaad rehti hai. Panel sirf aap ke computer
+  par (127.0.0.1) chalta hai, bahar se koi isay nahi khol sakta.
+  Iska look black & silver hai (Settings me "silver" light theme bhi hai).
+  Zabaan: Roman Urdu, English ya Urdu (Settings se).
+
+--------------------------------------------------------------------------
+1) Kholna
+--------------------------------------------------------------------------
+  - PHP-Station.bat par double-click karein. Panel start ho kar app window me
+    khul jata hai: http://127.0.0.1:7070/
+  - Shortcut: pehli dafa chalne par Desktop aur Start Menu me "PHP Station"
+    ka shortcut khud ban jata hai. Delete ho jaye to Settings > "Shortcuts
+    banayein (Desktop + Start Menu)".
+  - Node.js zaroori hai. PHP Station pehle PHP Station folder ke runtimes\node,
+    phir PATH wala node, phir C:\nvm4w\nodejs\node.exe dhoondta hai.
+    Node na mile to PHP-Station.bat poochta hai (Y/N): "Y" par nodejs.org se
+    Node LTS ka portable version runtimes\node me aa jata hai (SHA-256
+    check hota hai, admin ya PATH ki zaroorat nahi). "N" par nodejs.org ka
+    link dikhata hai.
+
+--------------------------------------------------------------------------
+2) Project add karna
+--------------------------------------------------------------------------
+  - Projects > "+ Naya project" > "Browse..." se folder chunein. PHP Station
+    khud dekh leta hai: Laravel version, composer.json ki PHP requirement,
+    .env ka DB host/port/database, vendor hai ya nahi.
+  - Ya "Folders scan karein" se htdocs/www ke saare folders aik sath dekhein
+    aur jo chahiye unhein tick kar ke add karein.
+  - Project ki files ko PHP Station khud se nahi chherta - sirf jab aap .env
+    button ya Setup checklist chalayein (neeche dekhein).
+
+--------------------------------------------------------------------------
+3) PHP / Composer / DB chunna, Run aur Stop
+--------------------------------------------------------------------------
+  - Har card par PHP, Composer aur DB server ke dropdown hain.
+    Star = suggest kiya hua PHP; warning = composer.json/Laravel se mail nahi.
+  - PORT: naye project ko pehli dafa chalate waqt PHP Station poochta hai
+    "Ye project kis port par chalayein?" (khali port pehle se likha hota
+    hai). Ye sirf aik baar poocha jata hai; baad me card par pencil se
+    badal sakte hain.
+  - Toggle ON = project chal parta hai, URL par click karein
+    (misal http://127.0.0.1:8001). Toggle OFF = band.
+  - Chalte project ka PHP/Composer/DB badalne ke liye pehle band karein.
+  - Agar project ka DB server band hai to PHP Station poochta hai:
+    "Pehle use start karein?"
+  - Panel band karne se projects band NAHI hote - wo chalte rehte hain.
+
+--------------------------------------------------------------------------
+4) Database nahi mila (project chalate waqt)
+--------------------------------------------------------------------------
+  - Agar .env ka DB_DATABASE chune hue DB server par nahi hai to PHP Station
+    teen raste deta hai:
+      1. "Purane server se laayein" - jo chalte servers par ye database
+         hai unki list (DB Move ki tarah copy, rows gin kar milayi jati hain).
+         List khali ho to purana server DB Servers page se start karein.
+      2. ".sql file import karein" - file ka path likhein ya Browse.
+         Jis .sql file me USE / CREATE DATABASE kisi aur database ke liye
+         ho wo import nahi hoti (doosre database me likh sakti hai).
+      3. "Khali database banayein" (utf8mb4).
+  - Database pehle se ho to kuch nahi hota - kabhi overwrite nahi hota.
+  - Kaam ke baad project khud chal parta hai.
+
+--------------------------------------------------------------------------
+5) Setup checklist (.env, composer install, APP_KEY)
+--------------------------------------------------------------------------
+  - Card par "Setup" tag aaye to click karein. Checklist:
+      .env banayein (.env.example se, sirf jab .env na ho)
+      .env me DB settings (host 127.0.0.1, chune hue server ka port)
+      APP_URL = http://127.0.0.1:<project port>
+      composer install
+      APP_KEY banayein (php artisan key:generate)
+  - "Sab khud set karein" se sab aik job me chalta hai. .env badalne se
+    pehle har dafa backup banta hai: data\env-backups\<project-id>\
+    (project folder ke andar kuch nahi banta).
+
+--------------------------------------------------------------------------
+6) Install / Setup page (PHP, MariaDB, Composer)
+--------------------------------------------------------------------------
+  - Dikhata hai kya install hai aur kya missing hai.
+  - Har cheez sirf official jagah se aati hai: windows.php.net,
+    mariadb.org, getcomposer.org (CA certificates: curl.se).
+  - Har install se pehle PHP Station poochta hai (source, size, folder).
+    Download ka SHA-256 official list se milaya jata hai - mail na khaye to
+    file delete, kuch install nahi hota.
+  - Sab kuch PHP Station folder ke runtimes\ me jata hai:
+      runtimes\php\<version>      (php.ini khud banti hai, zaroori
+                                   extensions ON)
+      runtimes\mariadb\<version>  (saath me naya DB server, apne port par,
+                                   datadir isi folder me)
+      runtimes\composer\<version>
+  - Admin rights nahi chahiye, system PATH nahi badalta. Pehle se mojood
+    version kabhi overwrite nahi hota. Runtimes scan me ye khud aa jate hain.
+
+--------------------------------------------------------------------------
+7) Bahar se chal rahe servers
+--------------------------------------------------------------------------
+  - Jo php servers aap ne khud chalaye (php artisan serve, kit serve,
+    php -S) wo "Bahar se chal rahe servers" me dikhte hain.
+  - "List me shamil karein" = project list me add (server chalta rahega).
+  - "Band karein" = confirm ke baad sirf wahi server band hota hai.
+
+--------------------------------------------------------------------------
+8) DB Servers
+--------------------------------------------------------------------------
+  - Har MariaDB/MySQL install ka aik card: port, datadir, my.ini, status.
+  - Aik datadir par sirf AIK server chalna chahiye. "SHARED_DATADIR"
+    warning ka matlab: do installs aik hi datadir use karte hain - kabhi
+    dono aik sath na chalayein (data kharab ho sakta hai).
+  - Stop hamesha "graceful" hota hai. "Zabardasti band karein" sirf tab
+    dikhta hai jab graceful stop na chale - is se data kharab ho sakta hai.
+  - Jo server admin/Laragon ne chalaya ho use wahin se band karein.
+  - "+ Naya DB server" = bilkul naya, khali server (naya datadir) apne port par.
+
+--------------------------------------------------------------------------
+9) DB Move (purane server se naye server par)
+--------------------------------------------------------------------------
+  - Purana server + database chunein, phir naya server + naya naam.
+  - Naye server par us naam ka database pehle se ho to move nahi hota -
+    PHP Station kabhi overwrite nahi karta.
+  - Move ke baad har table ki rows dono taraf gin kar milayi jati hain.
+  - Dump file me ASAL data hota hai. Ye Settings wale dump folder ke
+    andar devpanel\ me banti hai (naye install par: PHP Station folder\
+    backups\devpanel\). Kaam ke baad "Dump file delete karein" se mita dein.
+
+--------------------------------------------------------------------------
+10) .env ka DB_PORT button aur Terminal
+--------------------------------------------------------------------------
+  - .env ka DB_PORT chune hue DB server ke port se mukhtalif ho to card par
+    button aata hai: ".env me DB_PORT=... likh dein" (pehle backup).
+  - Terminal menu: Terminal kholein, composer install, composer update
+    --dry-run, check-platform-reqs, migrate:status, optimize:clear, tinker.
+    Terminal me "php" aur "composer" wahi version hain jo project ke liye
+    chune gaye hain.
+
+--------------------------------------------------------------------------
+11) Masla ho to
+--------------------------------------------------------------------------
+  Port busy hai           -> PHP Station khud naya port de deta hai, ya card
+                             par pencil se port badlein.
+  "PHP ab nahi mila"      -> switch-php se folder badla hoga. Runtimes >
+                             "Dobara scan karein", phir card par PHP chunein.
+  DB server start nahi    -> DB card par "Log" button dabayein, error wahin
+  hota                       likha hota hai (aksar port busy ya datadir in use).
+  Install fail hua        -> Internet check karein; job log me wajah likhi
+                             hoti hai (SHA-256 mismatch par file khud delete).
+  "Panel dobara chala     -> Page khud reload ho jata hai, kuch nahi karna.
+  hai" banner
+  Panel nahi khulta       -> data\logs\panel.log dekhein.
+
+--------------------------------------------------------------------------
+12) Hifazat (safety)
+--------------------------------------------------------------------------
+  - PHP Station sirf wahi process band karta hai jo usne pehchan kar verify
+    kiye hon. Doosre programs ko haath nahi lagata.
+  - DB passwords kahin save ya log nahi hote.
+  - Data kahan hai: PHP Station folder ke andar data\ (project list, settings,
+    logs, .env backups, php.ini copies). Ye folder kisi ko share na karein.
+    runtimes\ me installed PHP/MariaDB/Composer/Node hain.
+
+--------------------------------------------------------------------------
+13) Setup Wizard (naye computer par)
+--------------------------------------------------------------------------
+  - Install / Setup > "Wizard kholein". 3 qadam:
+      1. Aap ke paas kya hai (XAMPP, Laragon, WAMP, PHP Station ke apne)
+         aur har project ko kaun sa PHP chahiye.
+      2. Chunein - "Khud chunein" sirf wahi chunta hai jo waqai chahiye.
+      3. Install - sab aik batch me (aik fail ho to baqi chalte rehte hain).
+  - Pehli dafa (koi project na ho) wizard khud khulta hai.
+
+--------------------------------------------------------------------------
+14) phpMyAdmin
+--------------------------------------------------------------------------
+  - DB Servers > "phpMyAdmin kholein", ya DB card / project card par
+    phpMyAdmin button. PHP Station apni copy chalata hai (127.0.0.1 par),
+    har DB server apne port ke sath list me hota hai.
+  - Pehli dafa: phpmyadmin.net se download karein (SHA-256 check) ya
+    XAMPP/Laragon wala copy kar lein (asal folder nahi badalta).
+  - Login phpMyAdmin me hota hai; password PHP Station save nahi karta.
+
+--------------------------------------------------------------------------
+15) DB ki hifazat: guard, snapshot, dump, repair
+--------------------------------------------------------------------------
+  - Shutdown guard: Windows band / restart / sign-out par har DB server
+    saaf tareeqe se band hota hai (PHPStationGuard.exe). XAMPP ka
+    "MySQL shutdown unexpectedly" aksar yahin se aata hai.
+  - Snapshot: server start hone se pehle data folder ki poori copy
+    (rozana / har dafa / band - Settings me). Purani "auto" copies hi
+    hatti hain; manual aur pre-repair copies kabhi nahi.
+  - Dump: chalte server ke har database ki .sql file, din me aik dafa.
+  - Restore: maujooda folder "_before_restore_<waqt>" naam se rehta hai;
+    dump hamesha NAYE database me aata hai - kuch overwrite nahi hota.
+  - Repair (DB card > Repair): error log parh kar masla batata hai,
+    pehle snapshot, phir tables theek. InnoDB kharab ho to "Data
+    bachayein" - ye copy par kaam karta hai, asal data ko nahi chherta.
+  - Sab backups: Settings ke "DB dump folder" ke andar devpanel-backups\.
+
+--------------------------------------------------------------------------
+16) Panel band karna, About
+--------------------------------------------------------------------------
+  - PHP-Station-Stop.bat double-click karein, ya Settings >
+    "Panel band karein (projects chalte rahenge)".
+  - Projects aur DB servers chalte rehte hain (band karne hon to pehle Stop).
+  - Banaya: Sami Hussain - Founder, x8code (https://x8code.com).
+    License: MIT (LICENSE file dekhein).

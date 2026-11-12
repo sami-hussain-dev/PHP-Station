@@ -1,0 +1,49 @@
+{
+  "name": "php-station",
+  "version": "1.2.0",
+  "description": "PHP Station: a free, zero-dependency local PHP development environment for Windows. Run many PHP / Laravel projects side by side, each with its own PHP version, Composer and MariaDB server. A modern XAMPP / Laragon alternative with a setup wizard, phpMyAdmin, crash-safe databases, automatic backups and one-click repair.",
+  "private": true,
+  "license": "MIT",
+  "author": "Sami Hussain (x8code - https://x8code.com)",
+  "homepage": "https://github.com/sami-hussain-dev/PHP-Station",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sami-hussain-dev/PHP-Station.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sami-hussain-dev/PHP-Station/issues"
+  },
+  "keywords": [
+    "php",
+    "laravel",
+    "windows",
+    "local-development",
+    "development-environment",
+    "xampp-alternative",
+    "laragon-alternative",
+    "wamp-alternative",
+    "php-version-manager",
+    "multiple-php-versions",
+    "mariadb",
+    "mysql",
+    "composer",
+    "phpmyadmin",
+    "database-backup",
+    "database-repair",
+    "control-panel",
+    "localhost",
+    "zero-dependency",
+    "nodejs"
+  ],
+  "os": [
+    "win32"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js --launch",
+    "stop": "node server.js --stop",
+    "test": "node --test tests/unit.test.js tests/integration.test.js tests/installer.test.js tests/wizard.test.js tests/safety.test.js tests/db.integration.test.js tests/installer.net.test.js"
+  }
+}

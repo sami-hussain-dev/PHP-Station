@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PHP Station — run many PHP & Laravel projects side by side on Windows | Free XAMPP / Laragon alternative</title>
+<meta name="description" content="PHP Station is a free, zero-dependency local PHP development environment for Windows. Run every PHP and Laravel project with its own PHP version, Composer and MariaDB server — with a setup wizard, phpMyAdmin, crash-safe databases, automatic backups and one-click repair.">
+<meta name="keywords" content="PHP Station, local PHP development environment, Windows, XAMPP alternative, Laragon alternative, WAMP alternative, multiple PHP versions, Laravel, MariaDB, MySQL, Composer, phpMyAdmin, MySQL shutdown unexpectedly, database repair, database backup">
+<meta name="author" content="Sami Hussain, x8code">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://sami-hussain-dev.github.io/PHP-Station/">
+<meta name="theme-color" content="#0b0c0e">
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+<link rel="apple-touch-icon" href="assets/icon-256.png">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="PHP Station">
+<meta property="og:title" content="PHP Station — every PHP project with its own PHP, Composer and MariaDB">
+<meta property="og:description" content="Free, zero-dependency local PHP environment for Windows. A modern XAMPP / Laragon alternative with crash-safe databases, automatic backups and one-click repair.">
+<meta property="og:url" content="https://sami-hussain-dev.github.io/PHP-Station/">
+<meta property="og:image" content="https://sami-hussain-dev.github.io/PHP-Station/assets/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="PHP Station: run every PHP and Laravel project side by side on Windows">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PHP Station — local PHP environment for Windows">
+<meta name="twitter:description" content="Every PHP & Laravel project with its own PHP version, Composer and MariaDB. Free XAMPP / Laragon alternative.">
+<meta name="twitter:image" content="https://sami-hussain-dev.github.io/PHP-Station/assets/social-preview.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://sami-hussain-dev.github.io/PHP-Station/#app",
+      "name": "PHP Station",
+      "alternateName": "DevPanel",
+      "description": "Free, zero-dependency local PHP development environment and control panel for Windows. Runs many PHP and Laravel projects side by side, each with its own PHP version, Composer and MariaDB/MySQL server, with a setup wizard, phpMyAdmin, crash-safe databases, automatic backups and one-click repair.",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Local development environment",
+      "operatingSystem": "Windows 10, Windows 11",
+      "softwareVersion": "1.2.0",
+      "softwareRequirements": "Node.js 18 or newer (downloaded automatically if missing)",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "url": "https://sami-hussain-dev.github.io/PHP-Station/",
+      "downloadUrl": "https://github.com/sami-hussain-dev/PHP-Station/archive/refs/heads/master.zip",
+      "codeRepository": "https://github.com/sami-hussain-dev/PHP-Station",
+      "image": "https://sami-hussain-dev.github.io/PHP-Station/assets/social-preview.png",
+      "screenshot": "https://sami-hussain-dev.github.io/PHP-Station/screenshots/01-projects.png",
+      "inLanguage": ["en", "ur"],
+      "featureList": [
+        "Different PHP version per project, running at the same time",
+        "Several MariaDB / MySQL servers side by side",
+        "PHP suggestion from composer.json and Laravel version",
+        "Setup wizard: PHP 7.4-8.5, MariaDB 10.4-12.x, Composer and phpMyAdmin from official sources with SHA-256 check",
+        "Built-in phpMyAdmin with every DB server",
+        "Clean DB shutdown on Windows shutdown / sign-out",
+        "Automatic data-folder snapshots and daily SQL dumps",
+        "One-click database repair from the error log and InnoDB rescue on a copy",
+        "English, Roman Urdu and Urdu interface"
+      ],
+      "author": { "@id": "https://sami-hussain-dev.github.io/PHP-Station/#author" },
+      "publisher": { "@id": "https://sami-hussain-dev.github.io/PHP-Station/#org" }
+    },
+    { "@type": "Person", "@id": "https://sami-hussain-dev.github.io/PHP-Station/#author", "name": "Sami Hussain", "worksFor": { "@id": "https://sami-hussain-dev.github.io/PHP-Station/#org" } },
+    { "@type": "Organization", "@id": "https://sami-hussain-dev.github.io/PHP-Station/#org", "name": "x8code", "url": "https://x8code.com" },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "How do I run two Laravel projects with different PHP versions on Windows?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Add both projects to PHP Station and pick a PHP version on each project card, for example PHP 8.0 for a Laravel 8 app and PHP 8.3 for a Laravel 12 app. Switch both on: each runs with its own php.exe on its own port at the same time, nothing is switched globally." } },
+        { "@type": "Question", "name": "Is PHP Station a replacement for XAMPP or Laragon?",
+          "acceptedAnswer": { "@type": "Answer", "text": "It can be. PHP Station installs PHP, MariaDB, Composer and phpMyAdmin by itself, and it also works on top of an existing XAMPP or Laragon: their PHP versions and DB servers appear automatically and can be used per project." } },
+        { "@type": "Question", "name": "How does PHP Station prevent 'MySQL shutdown unexpectedly' in XAMPP?",
+          "acceptedAnswer": { "@type": "Answer", "text": "That error usually comes from a DB server that was killed during Windows shutdown or sign-out, or from two servers on the same data folder. PHP Station's shutdown guard makes Windows wait and stops every DB server cleanly, refuses to start a second server on a data folder in use, and snapshots the data folder before each start." } },
+        { "@type": "Question", "name": "How do I repair a crashed MariaDB or MySQL database?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Open DB Servers, then Repair on the server's card. PHP Station reads the error log, names the problem, takes a full snapshot, repairs crashed Aria/MyISAM tables, rebuilds broken system tables from a clean template and checks every table. For InnoDB damage, Rescue data works on a copy with innodb_force_recovery, never on the original." } },
+        { "@type": "Question", "name": "Does PHP Station need admin rights or change the PATH?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Everything it installs goes into its own runtimes folder and the system PATH is never changed." } },
+        { "@type": "Question", "name": "Is PHP Station free?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. PHP Station is free and open source under the MIT license." } }
+      ]
+    }
+  ]
+}
+</script>
+<style>
+  :root { --bg: #0b0c0e; --panel: #131519; --line: #262a30; --text: #eceef1; --muted: #9aa0a8; --accent: #e9ebee; --ok: #34d399; --max: 1120px; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f5f7; --panel: #ffffff; --line: #dfe2e6; --text: #121417; --muted: #5b616a; --accent: #121417; --ok: #0f9f6e; } }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  a { color: inherit; }
+  img { max-width: 100%; height: auto; display: block; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 16px; }
+  header.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  header.top .wrap { display: flex; align-items: center; gap: 12px; height: 60px; }
+  header.top img { width: 30px; height: 30px; }
+  header.top strong { font-size: 18px; }
+  header.top nav { margin-left: auto; display: flex; gap: 18px; font-size: 15px; }
+  header.top nav a { text-decoration: none; color: var(--muted); }
+  header.top nav a:hover { color: var(--text); }
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.08; letter-spacing: -1.5px; margin: 0 auto 18px; max-width: 900px; }
+  .hero p.lead { font-size: clamp(17px, 2.2vw, 21px); color: var(--muted); max-width: 760px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; border-radius: 12px; text-decoration: none; font-weight: 600; border: 1px solid var(--line); }
+  .btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .shot { margin: 44px auto 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 3.5vw, 36px); letter-spacing: -.6px; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 30px; max-width: 760px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .gallery figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .gallery figcaption { padding: 10px 14px; font-size: 14px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; font-size: 15px; }
+  th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th:not(:first-child), td:not(:first-child) { text-align: center; }
+  .table-wrap { overflow-x: auto; }
+  .yes { color: var(--ok); font-weight: 700; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--muted); margin: 10px 0 0; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; font-size: 14px; }
+  ol.steps li { margin-bottom: 10px; }
+  .ur { direction: rtl; text-align: right; font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Segoe UI", serif; line-height: 2.1; font-size: 18px; }
+  footer { padding: 36px 0 60px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  @media (max-width: 640px) { header.top nav a.hide-sm { display: none; } .hero { padding-top: 44px; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <img src="assets/logo.svg" alt="" width="30" height="30">
+    <strong>PHP Station</strong>
+    <nav aria-label="Sections">
+      <a href="#features" class="hide-sm">Features</a>
+      <a href="#screens" class="hide-sm">Screenshots</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/sami-hussain-dev/PHP-Station">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1>Every PHP project with its own PHP, Composer and MariaDB, side by side on Windows</h1>
+    <p class="lead">PHP Station is a free, zero-dependency local development environment. It is a modern XAMPP / Laragon alternative with a setup wizard, built-in phpMyAdmin, crash-safe databases, automatic backups and one-click repair.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/sami-hussain-dev/PHP-Station/archive/refs/heads/master.zip">Download for Windows (free)</a>
+      <a class="btn" href="https://github.com/sami-hussain-dev/PHP-Station">View on GitHub</a>
+    </div>
+    <img class="shot" src="screenshots/01-projects.png" width="2880" height="1800" alt="PHP Station dashboard with five PHP and Laravel projects, each with its own PHP version, Composer and MariaDB server">
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>What PHP Station does</h2>
+      <p class="sub">One small control panel on 127.0.0.1 for every PHP project you have: old Laravel 8 apps, new Laravel 12 apps and plain PHP sites, all running at the same time.</p>
+      <div class="grid">
+        <div class="card"><h3>PHP per project</h3><p>PHP 7.4 to 8.5, side by side. The right version is suggested from composer.json and the Laravel version.</p></div>
+        <div class="card"><h3>DB servers side by side</h3><p>MariaDB / MySQL servers each on their own port and data folder, plus new isolated instances in one click.</p></div>
+        <div class="card"><h3>Setup wizard</h3><p>Sees what is installed, works out what your projects need, and installs it from the official sources with a SHA-256 check.</p></div>
+        <div class="card"><h3>phpMyAdmin built in</h3><p>Every DB server appears on its own port, and a project's database opens with one click.</p></div>
+        <div class="card"><h3>Crash-safe databases</h3><p>Clean DB shutdown when Windows shuts down, snapshots before every start, and daily .sql dumps. Old data is never overwritten.</p></div>
+        <div class="card"><h3>One-click repair</h3><p>Reads the error log, takes a snapshot, then repairs. InnoDB rescue runs on a copy, never on the original.</p></div>
+        <div class="card"><h3>Uses what you have</h3><p>XAMPP, Laragon, WAMP and PATH installs are found automatically. No admin rights, no PATH changes.</p></div>
+        <div class="card"><h3>Three languages</h3><p>English, Roman Urdu and Urdu (right-to-left), with dark and light themes.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens">
+    <div class="wrap">
+      <h2>Screenshots</h2>
+      <p class="sub">The screenshots show demo projects.</p>
+      <div class="gallery">
+        <figure><img loading="lazy" src="screenshots/03-db-servers.png" width="2880" height="1800" alt="Two MariaDB servers, 12.3 and 10.4, running side by side"><figcaption>DB servers side by side</figcaption></figure>
+        <figure><img loading="lazy" src="screenshots/12-phpmyadmin.png" width="2880" height="1800" alt="phpMyAdmin opened by PHP Station"><figcaption>Built-in phpMyAdmin</figcaption></figure>
+        <figure><img loading="lazy" src="screenshots/07-setup-wizard.png" width="2880" height="1800" alt="Setup wizard: installed stacks and what each project needs"><figcaption>Setup wizard</figcaption></figure>
+        <figure><img loading="lazy" src="screenshots/04-backups.png" width="2880" height="1800" alt="Backups: snapshots and daily SQL dumps"><figcaption>Snapshots and daily dumps</figcaption></figure>
+        <figure><img loading="lazy" src="screenshots/05-repair.png" width="2880" height="1800" alt="One-click database repair"><figcaption>One-click repair</figcaption></figure>
+        <figure><img loading="lazy" src="screenshots/11-projects-urdu.png" width="2880" height="1800" alt="PHP Station in Urdu, right-to-left"><figcaption>Urdu (RTL) interface</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="wrap">
+      <h2>PHP Station vs XAMPP vs Laragon</h2>
+      <p class="sub">PHP Station does not throw away your existing installs. It finds them and uses them.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>PHP Station</th><th>XAMPP</th><th>Laragon</th></tr></thead>
+          <tbody>
+            <tr><td>Different PHP version per project, at the same time</td><td class="yes">Yes</td><td>No</td><td>One global version</td></tr>
+            <tr><td>Several MariaDB / MySQL servers side by side</td><td class="yes">Yes</td><td>No</td><td>Manual</td></tr>
+            <tr><td>Clean DB stop on Windows shutdown / sign-out</td><td class="yes">Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>Automatic snapshots + daily SQL dumps</td><td class="yes">Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>One-click database repair</td><td class="yes">Yes</td><td>No</td><td>No</td></tr>
+            <tr><td>Official downloads with SHA-256 check</td><td class="yes">Yes</td><td>–</td><td>–</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2>Get started in a minute</h2>
+      <ol class="steps">
+        <li><a href="https://github.com/sami-hussain-dev/PHP-Station/archive/refs/heads/master.zip">Download the ZIP</a> and unpack it anywhere (or <code>git clone https://github.com/sami-hussain-dev/PHP-Station.git</code>).</li>
+        <li>Double-click <b>PHP-Station.bat</b>. The panel opens at <code>http://127.0.0.1:7070/</code>, and a Desktop and Start Menu shortcut is created.</li>
+        <li>The Setup wizard installs what your projects need. Then add a project and switch it on.</li>
+      </ol>
+      <p class="sub">Needs Windows 10/11 and Node.js 18+. If Node.js is missing, it is downloaded for you as a portable copy.</p>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <h2>Frequently asked questions</h2>
+      <details open><summary>How do I run two Laravel projects with different PHP versions on Windows?</summary><p>Add both projects to PHP Station and choose a PHP version on each card, for example PHP 8.0 for a Laravel 8 app and PHP 8.3 for a Laravel 12 app. Switch both on. Each runs with its own php.exe on its own port, at the same time.</p></details>
+      <details><summary>Is PHP Station a replacement for XAMPP or Laragon?</summary><p>It can be. It installs PHP, MariaDB, Composer and phpMyAdmin by itself. It also works on top of an existing XAMPP or Laragon, whose PHP versions and DB servers appear automatically.</p></details>
+      <details><summary>How does PHP Station prevent "MySQL shutdown unexpectedly"?</summary><p>That error usually comes from a DB server killed during Windows shutdown or sign-out, or from two servers on one data folder. PHP Station's shutdown guard stops every DB server cleanly. It also refuses to start a second server on a data folder that is in use, and it snapshots the data folder before each start.</p></details>
+      <details><summary>How do I repair a crashed MariaDB / MySQL database?</summary><p>Open DB Servers → Repair. PHP Station reads the error log, names the problem, takes a full snapshot and then repairs it. For InnoDB damage, Rescue data works on a copy of the data, never on the original.</p></details>
+      <details><summary>Does it need admin rights or change my PATH?</summary><p>No. Everything goes into PHP Station's own runtimes folder.</p></details>
+      <details><summary>Is it free?</summary><p>Yes. It is free and open source under the MIT license.</p></details>
+    </div>
+  </section>
+
+  <section id="urdu" lang="ur">
+    <div class="wrap ur">
+      <h2>پی ایچ پی اسٹیشن</h2>
+      <p>ونڈوز کے لیے مفت لوکل پی ایچ پی ماحول۔ ہر پروجیکٹ اپنے پی ایچ پی ورژن، اپنے کمپوزر اور اپنے ماریا ڈی بی سرور کے ساتھ، ایک ساتھ چلتا ہے۔ ونڈوز بند ہوتے وقت ڈیٹا بیس محفوظ طریقے سے بند ہوتا ہے، روزانہ بیک اپ بنتا ہے، اور خرابی کی صورت میں ایک کلک سے مرمت ہو جاتی ہے۔</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">PHP Station · MIT license · Built by Sami Hussain, founder of <a href="https://x8code.com">x8code</a> · <a href="https://github.com/sami-hussain-dev/PHP-Station">Source on GitHub</a></div>
+</footer>
+</body>
+</html>
