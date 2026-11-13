@@ -27,6 +27,11 @@ const guard = require('./lib/guard');
 const shortcuts = require('./lib/shortcuts');
 const backups = require('./lib/backups');
 const dbrepair = require('./lib/dbrepair');
+const timemachine = require('./lib/timemachine');
+const share = require('./lib/share');
+const importer = require('./lib/importer');
+const teamfile = require('./lib/teamfile');
+const dbhistory = require('./lib/dbhistory');
 const i18n = require('./lib/i18n');
 
 const { AppError } = util;
@@ -298,6 +303,8 @@ async function cmdServe(args) {
     if (exiting) return;
     exiting = true;
     log(`shutdown (${reason})`);
+    // a public share link never outlives the panel
+    try { share.stopAll(ctx); ctx.dirty = true; } catch { /* ignore */ }
     try { if (ctx.dirty) store.save(); } catch { /* ignore */ }
     try {
       const pj = util.readJson(panelFile(dataDir), null);
@@ -531,12 +538,16 @@ async function buildState(ctx) {
   // the shutdown guard stops exactly the DB servers that run now
   if (snap.ok) try { guard.writeList(ctx, db.list); } catch (e) { ctx.log(`guard list: ${e.message}`); }
   const projectViews = projects.views(ctx, snap, db.list);
+  for (const pv of projectViews) {
+    try { pv.points = timemachine.summary(ctx, pv.id); } catch { pv.points = { count: 0, last: null }; }
+  }
   const ext = projects.externalViews(ctx, snap);
   return {
     ok: true,
     panel: { version: VERSION, port: ctx.port, pid: process.pid, startedAt: ctx.startedAt, dataDir: ctx.dataDir },
     settings: ctx.store.data.settings,
     runtimes: runtimes.getCache(ctx),
+    tools: { cloudflared: share.findCloudflared(ctx) },
     projects: projectViews,
     dbServers: db.list,
     external: { php: ext, db: db.unknown },
@@ -566,7 +577,7 @@ route('POST', '/api/projects/inspect', async (ctx, { body }) => {
   const dbList = await dbViewList(ctx);
   const already = ctx.store.data.projects.find((p) => util.samePath(p.path, dir));
   return {
-    info: Object.assign({}, info, { laravel: projects.laravelVersionOf(info), path: dir, alreadyAdded: already ? already.id : null }),
+    info: Object.assign({}, info, { laravel: projects.laravelVersionOf(info), path: dir, alreadyAdded: already ? already.id : null, teamFile: teamfile.exists(dir) }),
     suggestions: {
       php: projects.suggestPhp(info, runtimes.getCache(ctx).php).map(({ version, path: pp, satisfies, hint }) => ({ version, path: pp, satisfies, hint })),
       dbServerId: projects.suggestDbServer(info, dbList),
@@ -574,7 +585,16 @@ route('POST', '/api/projects/inspect', async (ctx, { body }) => {
   };
 });
 
-route('POST', '/api/projects', async (ctx, { body }) => ({ project: await projects.addProject(ctx, body) }));
+route('POST', '/api/projects', async (ctx, { body }) => {
+  const project = await projects.addProject(ctx, body);
+  // DB Time Machine baseline: a full copy of the project's database as it was when it arrived
+  // (only when its server already runs; quietly skipped otherwise)
+  if (project.dbServerId) {
+    const jobId = jobs.createJob('restore-point', tr('job.restorePoint', { name: project.name }), (log, job) => timemachine.createPoint(ctx, project.id, { reason: 'auto', command: 'baseline', log, job }));
+    jobs.getJob(jobId).projectId = project.id;
+  }
+  return { project };
+});
 route('POST', '/api/projects/:id/update', async (ctx, { params, body }) => ({ project: await projects.updateProject(ctx, params.id, body) }));
 route('POST', '/api/projects/:id/remove', async (ctx, { params }) => { await projects.removeProject(ctx, params.id); return {}; });
 
@@ -589,7 +609,11 @@ function startOpts(body) {
   return o;
 }
 route('POST', '/api/projects/:id/start', async (ctx, { params, body }) => startResult(await projects.startProject(ctx, params.id, startOpts(body))));
-route('POST', '/api/projects/:id/stop', async (ctx, { params }) => { await projects.stopProject(ctx, params.id); return {}; });
+route('POST', '/api/projects/:id/stop', async (ctx, { params }) => {
+  share.stop(ctx, params.id, 'project stopped');
+  await projects.stopProject(ctx, params.id);
+  return {};
+});
 route('POST', '/api/projects/:id/restart', async (ctx, { params, body }) => startResult(await projects.restartProject(ctx, params.id, startOpts(body))));
 route('POST', '/api/projects/:id/db-provision', (ctx, { params, body }) => {
   const input = dbprovision.prepare(ctx, params.id, body);
@@ -620,6 +644,119 @@ route('GET', '/api/projects/:id/log', (ctx, { params, query }) => projects.getLo
 route('POST', '/api/projects/:id/log/clear', (ctx, { params }) => projects.clearLog(ctx, params.id));
 
 route('POST', '/api/scan-projects', async (ctx) => ({ items: projects.scanProjects(ctx, await dbViewList(ctx)) }));
+
+// ------------------------------------------------------------------------------------------ DB Time Machine
+route('GET', '/api/projects/:id/points', (ctx, { params }) => timemachine.overview(ctx, params.id));
+// Also called by tools\restore-point.js (php.bat shim) before `php artisan migrate*` / `db:*`.
+route('POST', '/api/projects/:id/restore-point', (ctx, { params, body }) => {
+  const p = projects.getProject(ctx, params.id);
+  const reason = body.reason === 'artisan' ? 'artisan' : 'manual';
+  const command = typeof body.command === 'string' ? body.command.trim().slice(0, 120) : null;
+  if (reason === 'artisan' && (!timemachine.settingsOf(ctx).beforeArtisan || !timemachine.isWritingCommand(command))) return { skipped: true };
+  if (jobs.findRunning('restore-point', (j) => j.projectId === p.id) || jobs.findRunning('undo', (j) => j.projectId === p.id)) {
+    throw new AppError('BUSY', tr('tm.busy'), 409);
+  }
+  const title = reason === 'artisan' ? tr('job.restorePointArtisan', { name: p.name, command }) : tr('job.restorePoint', { name: p.name });
+  const jobId = jobs.createJob('restore-point', title, (log, job) => timemachine.createPoint(ctx, p.id, { reason, command, log, job }));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+route('POST', '/api/projects/:id/undo', (ctx, { params, body }) => {
+  needConfirm(body);
+  const p = projects.getProject(ctx, params.id);
+  const name = String(body.name || '');
+  if (!timemachine.NAME_RE.test(name)) throw new AppError('BAD_INPUT', tr('tm.badName'), 400);
+  if (jobs.findRunning('restore-point', (j) => j.projectId === p.id) || jobs.findRunning('undo', (j) => j.projectId === p.id)) {
+    throw new AppError('BUSY', tr('tm.busy'), 409);
+  }
+  const jobId = jobs.createJob('undo', tr('job.undo', { name: p.name }), (log, job) => timemachine.undoTo(ctx, p.id, name, log, job));
+  Object.assign(jobs.getJob(jobId), { projectId: p.id, full: true });
+  return { jobId };
+});
+// every action (binlog) of the project's database; undo ONE action
+route('GET', '/api/projects/:id/history', async (ctx, { params, query }) => {
+  if (jobs.findRunning('undo', (j) => j.projectId === params.id && j.full)) {
+    // a full "Go back here" is replacing the database right now: nothing in it is stable to show
+    return { on: true, busy: true, actions: [], tables: [] };
+  }
+  return dbhistory.list(ctx, params.id, {
+    limit: Number(query.get('limit')) || 100, table: query.get('table') || null, op: query.get('op') || null, q: query.get('q') || null,
+  });
+});
+route('POST', '/api/projects/:id/history/check', (ctx, { params, body }) => dbhistory.check(ctx, params.id, String(body.id || '')));
+route('POST', '/api/projects/:id/history/undo', (ctx, { params, body }) => {
+  needConfirm(body);
+  const p = projects.getProject(ctx, params.id);
+  dbhistory.parseActionId(body.id);
+  if (jobs.findRunning('undo', (j) => j.projectId === p.id) || jobs.findRunning('restore-point', (j) => j.projectId === p.id)) throw new AppError('BUSY', tr('hist.busy'), 409);
+  const jobId = jobs.createJob('undo', tr('job.undoAction', { name: p.name }), (log) => dbhistory.undoAction(ctx, p.id, String(body.id), log));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+// restart the project's DB server through PHP Station so its action history is recorded
+route('POST', '/api/projects/:id/history/enable', (ctx, { params, body }) => {
+  needConfirm(body);
+  const p = projects.getProject(ctx, params.id);
+  const e = projects.dbEntryFor(ctx, p);
+  if (!e) throw new AppError('NO_DB_SERVER', tr('tm.noDbServer'), 409);
+  if (!dbservers.historySupported(e)) throw new AppError('UNSUPPORTED', tr('hist.unsupported'), 409);
+  if (ctx.store.data.settings.dbHistory === false) { ctx.store.data.settings.dbHistory = true; ctx.store.save(); }
+  return { jobId: jobs.createJob('db-start', tr('job.historyEnable', { label: e.label }), async (log) => {
+    const st = await dbservers.isEntryRunning(ctx, e.id);
+    if (st.status.status === 'running') {
+      log('info', tr('hist.stopping', { label: e.label }));
+      const c = dbservers.resolveCreds(ctx, null, p.id);
+      await dbservers.stopServer(ctx, e.id, { user: c.user, password: c.password }, log);
+    }
+    await dbservers.startServer(ctx, e.id, { log });
+    return { ok: true };
+  }) };
+});
+route('POST', '/api/projects/:id/points/delete', (ctx, { params, body }) => { needConfirm(body); return timemachine.deletePoint(ctx, params.id, String(body.name || '')); });
+
+// ------------------------------------------------------------------------------------------ live share link
+route('POST', '/api/projects/:id/share/start', async (ctx, { params, body }) => {
+  if (body.confirm !== true) throw new AppError('CONFIRM_REQUIRED', tr('err.confirmRequired'));
+  const p = projects.getProject(ctx, params.id);
+  const snap = await procs.getSnapshot({ fresh: true });
+  const view = projects.views(ctx, snap, dbservers.views(ctx, snap).list).find((x) => x.id === p.id);
+  if (!view || view.status !== 'running' || !view.run) throw new AppError('NOT_RUNNING', tr('share.notRunning'), 409);
+  const run = Object.assign({}, ctx.store.data.runs[p.id] || {}, { port: view.run.port, external: !!view.run.external });
+  const r = await share.start(ctx, p, run, {
+    restart: async (opts) => {
+      ctx.log(`share ${p.id}: restarting PHP with the HTTPS prepend`);
+      return projects.restartProject(ctx, p.id, Object.assign({ skipDbCheck: true }, opts));
+    },
+  });
+  return r;
+});
+route('POST', '/api/projects/:id/share/stop', (ctx, { params }) => { projects.getProject(ctx, params.id); return share.stop(ctx, params.id, 'user'); });
+// opens an ACTIVE share link (and nothing else) in the default browser
+route('POST', '/api/open-share', (ctx, { body }) => {
+  const url = typeof body.url === 'string' ? body.url.trim().toLowerCase() : '';
+  const active = Object.values(ctx.store.data.shares || {}).some((s) => s && s.url === url);
+  if (!active || !/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url)) throw new AppError('URL_NOT_ALLOWED', tr('err.openUrlNotAllowed'), 403);
+  openInDefaultBrowser(url);
+  return {};
+});
+
+// ------------------------------------------------------------------------------------------ shift from XAMPP / Laragon
+route('GET', '/api/import/plan', (ctx) => importer.plan(ctx));
+
+// ------------------------------------------------------------------------------------------ phpstation.json (team file)
+route('POST', '/api/teamfile/plan', (ctx, { body }) => teamfile.plan(ctx, body.path));
+route('POST', '/api/teamfile/apply', async (ctx, { body }) => {
+  needConfirm(body);
+  const pl = await teamfile.plan(ctx, body.path);
+  if (jobs.findRunning('install') || jobs.findRunning('teamfile')) throw new AppError('BUSY', tr('inst.busy'), 409);
+  return { jobId: jobs.createJob('teamfile', tr('job.teamfile', { name: pl.name }), (log, job) => teamfile.applyJob(ctx, pl.path, log, job)) };
+});
+route('GET', '/api/projects/:id/teamfile', (ctx, { params }) => {
+  const p = projects.getProject(ctx, params.id);
+  const cur = teamfile.read(p.path);
+  return { path: path.join(p.path, teamfile.FILE), exists: cur.exists, current: cur.file, errors: cur.errors, proposed: teamfile.fromProject(ctx, p.id) };
+});
+route('POST', '/api/projects/:id/teamfile', (ctx, { params, body }) => teamfile.writeFile(ctx, params.id, { overwrite: body.overwrite === true }));
 
 const PICK_SCRIPT = String.raw`
 Add-Type -AssemblyName System.Windows.Forms

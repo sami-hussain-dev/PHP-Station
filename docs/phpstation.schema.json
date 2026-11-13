@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sami-hussain-dev.github.io/PHP-Station/phpstation.schema.json",
+  "title": "phpstation.json",
+  "description": "What a PHP / Laravel project needs. PHP Station reads it and sets up PHP, the database server and the project in one click.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "maxLength": 80, "description": "Project name shown in PHP Station." },
+    "php": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$", "description": "PHP branch, e.g. \"8.3\"." },
+    "extensions": {
+      "type": "array", "maxItems": 40, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^(ext-)?[a-z0-9_]{1,30}$" },
+      "description": "PHP extensions that must be enabled, e.g. [\"intl\", \"gd\"]."
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "engine": { "enum": ["mariadb", "mysql"], "default": "mariadb" },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$", "description": "Server branch, e.g. \"11.4\"." },
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_$-]{1,64}$", "description": "Database name (written to DB_DATABASE in .env)." }
+      },
+      "additionalProperties": false
+    },
+    "setup": {
+      "type": "array", "uniqueItems": true,
+      "items": { "enum": ["env", "composer-install", "key", "database", "migrate", "seed", "storage-link"] },
+      "description": "Setup steps, always run in this order: env, composer-install, key, database, migrate, seed, storage-link."
+    },
+    "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "Preferred local port." }
+  },
+  "additionalProperties": true
+}

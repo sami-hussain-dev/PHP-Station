@@ -29,4 +29,4 @@ jobs:
           Get-ChildItem -Recurse -Include *.js -Path server.js, lib, public, tests | ForEach-Object { node --check $_.FullName; if ($LASTEXITCODE) { exit 1 } }
       # The integration and DB tests need a real PHP / MariaDB on the machine: run them locally with `npm test`.
       - name: Unit, installer, wizard and safety tests (no servers, no network)
-        run: node --test tests/unit.test.js tests/installer.test.js tests/wizard.test.js tests/safety.test.js
+        run: node --test tests/unit.test.js tests/features.test.js tests/installer.test.js tests/wizard.test.js tests/safety.test.js

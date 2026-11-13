@@ -1507,3 +1507,113 @@ details.login-box > summary > svg:first-child { width: 18px; height: 18px; color
 /* DB card footer: wrap instead of clipping on narrow two-column layouts */
 .db-card .pc-foot { flex-wrap: wrap; row-gap: 4px; }
 
+
+/* ---------------------------------------------------------------- live share link */
+.project-card.is-shared { box-shadow: 0 0 0 1px var(--info-line), var(--shadow-1, none); }
+.share-strip { background: linear-gradient(var(--grad-start), var(--info-soft), transparent 75%); }
+.share-strip .share-url svg { color: var(--info-text); }
+.share-strip .btn { margin-inline-start: auto; }
+.share-live { font-weight: 700; letter-spacing: .04em; }
+.share-big {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 12px;
+  background: var(--info-soft); border: 1px solid var(--info-line);
+}
+.share-big code { flex: 1; font-size: 15px; font-weight: 700; color: var(--text); }
+.bullets { margin: 4px 0 0; padding-inline-start: 20px; display: grid; gap: 6px; }
+
+/* ---------------------------------------------------------------- project card footer: DB Undo / share */
+.project-card .pc-foot { flex-wrap: nowrap; min-width: 0; }
+.project-card .pc-foot > .muted.small { min-width: 0; flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-foot-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--border); }
+.btn.has-badge { position: relative; }
+.btn.has-badge::after {
+  content: attr(data-badge); position: absolute; top: 1px; inset-inline-end: 1px;
+  min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+  font: 700 9.5px/15px var(--mono); text-align: center;
+  background: var(--accent); color: var(--accent-text, #fff); pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- check list states (team plan) */
+.check-icon.is-ok { color: var(--ok-text); background: var(--ok-soft); border-color: var(--ok-line); }
+.check-icon.is-install { color: var(--info-text); background: var(--info-soft); border-color: var(--info-line); }
+.check-icon.is-warn { color: var(--warn-text); background: var(--warn-soft); border-color: var(--warn-line); }
+.check-icon.is-bad { color: var(--bad-text); background: var(--bad-soft); border-color: var(--bad-line); }
+.check-title svg { width: 14px; height: 14px; color: var(--text-3); }
+.team-steps { margin: 6px 0 0; padding-inline-start: 22px; display: grid; gap: 6px; }
+.team-steps li svg { width: 14px; height: 14px; margin-inline-end: 6px; vertical-align: -2px; color: var(--text-3); }
+
+/* ---------------------------------------------------------------- shift from XAMPP / Laragon */
+.imp-stack { display: grid; gap: 10px; padding-top: 6px; }
+.imp-stack + .imp-stack { border-top: 1px solid var(--border); padding-top: 16px; }
+.imp-stack .wiz-h .mono { margin-inline-start: 6px; font-weight: 400; }
+
+/* ---------------------------------------------------------------- DB Time Machine */
+.pc-foot .tm-btn { gap: 6px; padding-inline: 8px; }
+.pc-foot .tm-btn .btn-label { font-size: 12px; font-weight: 600; }
+.tm-what { padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-line); }
+.tm-what-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; }
+.tm-what-title svg { width: 16px; height: 16px; color: var(--accent-text); }
+.tm-what-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: tm; }
+.tm-what-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5; }
+.tm-what-list li svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--accent-text); }
+
+/* ---------------------------------------------------------------- DB Time Machine: every action */
+.tm-tabs { align-self: flex-start; }
+.tm-tabs .seg-btn svg { width: 15px; height: 15px; margin-inline-end: 6px; vertical-align: -3px; }
+.hist-list { max-height: 56vh; overflow: auto; }
+.hist-row .check-main { min-width: 0; }
+.hist-row.is-undo { opacity: .8; }
+.hist-sql { display: block; margin-top: 4px; font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.hist-rows { display: grid; gap: 3px; margin-top: 6px; }
+.hist-rowline { font-family: var(--mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
+.hist-op { display: inline-block; min-width: 54px; font-weight: 700; font-size: 11px; }
+.hist-op.op-insert { color: var(--ok-text); }
+.hist-op.op-update { color: var(--info-text); }
+.hist-op.op-delete { color: var(--bad-text); }
+.hist-filter { width: auto; min-width: 160px; max-width: 260px; flex: 0 0 auto; }
+.hist-row .check-main { flex: 1 1 auto; }
+.hist-row > .btn { flex: none; align-self: flex-start; margin-inline-start: auto; }
+
+/* ---------------------------------------------------------------- modal width
+   The backdrop grid's column must never grow with long unbreakable content (SQL, paths): otherwise
+   the modal is centred in an over-wide column and slides off to the right. */
+.modal-backdrop { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.modal { min-width: 0; max-width: 100%; }
+.modal-body { min-width: 0; overflow-x: hidden; }
+.hist-row .check-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.hist-row .check-title { flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------- every action: compact rows, details on click */
+.hist-row .check-main { cursor: pointer; }
+.hist-row.is-open { background: color-mix(in srgb, var(--surface-3) 60%, transparent); }
+.hist-cols { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.hist-key { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); }
+.hist-col { font-family: var(--mono); font-size: 11.5px; padding: 1px 7px; border-radius: 6px; background: var(--info-soft); color: var(--info-text); border: 1px solid var(--info-line); }
+.hist-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; align-self: flex-start; }
+.hist-toggle:hover { color: var(--text); }
+.hist-toggle svg { width: 13px; height: 13px; transition: transform 140ms var(--ease); }
+.hist-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.hist-details { display: grid; gap: 6px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, rgba(0,0,0,.2)); border: 1px solid var(--border); cursor: auto; }
+.hist-details[hidden] { display: none; }
+.hist-det-label { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+.hist-sql-full { margin: 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; color: var(--text); user-select: text; }
+
+/* ---------------------------------------------------------------- every action: many actions */
+.hist-toolbar .row { flex-wrap: wrap; row-gap: 8px; }
+.hist-ops .seg-btn { font-size: 12px; }
+.hist-search { width: 220px; }
+.hist-groups { display: grid; gap: 10px; max-height: 58vh; overflow: auto; padding-inline-end: 2px; }
+.hist-group { display: grid; gap: 6px; }
+.hist-hour { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2, rgba(255,255,255,.03)); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: start; position: sticky; top: 0; z-index: 1; }
+.hist-hour:hover { border-color: var(--border-2); }
+.hist-hour > svg { width: 14px; height: 14px; color: var(--text-3); transition: transform 140ms var(--ease); }
+.hist-hour[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.hist-hour .chip { font-size: 11px; }
+.hist-group > .hist-list { max-height: none; overflow: visible; }
+.hist-run .check-icon { color: var(--accent-text); }
+.hist-runlist { margin-top: 8px; }
+.hist-runlist[hidden] { display: none; }
+details.tm-what > summary { cursor: pointer; list-style: none; margin: 0; }
+details.tm-what > summary::-webkit-details-marker { display: none; }
+details.tm-what:not([open]) { padding-block: 10px; }
+details.tm-what[open] > summary { margin-bottom: 10px; }
