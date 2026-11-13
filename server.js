@@ -32,6 +32,11 @@ const share = require('./lib/share');
 const importer = require('./lib/importer');
 const teamfile = require('./lib/teamfile');
 const dbhistory = require('./lib/dbhistory');
+const mailcatch = require('./lib/mailcatch');
+const dumps = require('./lib/dumps');
+const devlogs = require('./lib/devlogs');
+const devtools = require('./lib/devtools');
+const gitclone = require('./lib/gitclone');
 const i18n = require('./lib/i18n');
 
 const { AppError } = util;
@@ -274,6 +279,10 @@ async function cmdServe(args) {
 
   if (!runtimes.hasCache(ctx)) runtimes.startScan(ctx, jobs);
 
+  // Inbox: Mail Catcher (SMTP) + dump() server; live.json tells the PHP prepend they are up
+  syncInbox(ctx);
+  devtools.startHeartbeat(ctx);
+
   // shutdown guard (stops DB servers cleanly when Windows shuts down / signs out)
   guard.ensure(ctx).then((g) => log(`guard: ${JSON.stringify(g)}`), (e) => log(`guard failed: ${e.message}`));
   // Desktop + Start Menu shortcuts, once per install folder
@@ -305,6 +314,8 @@ async function cmdServe(args) {
     log(`shutdown (${reason})`);
     // a public share link never outlives the panel
     try { share.stopAll(ctx); ctx.dirty = true; } catch { /* ignore */ }
+    // mail / dumps go back to the app's own settings the moment the panel is gone
+    try { devtools.removeLive(ctx); mailcatch.stop(ctx); dumps.stop(ctx); } catch { /* ignore */ }
     try { if (ctx.dirty) store.save(); } catch { /* ignore */ }
     try {
       const pj = util.readJson(panelFile(dataDir), null);
@@ -422,6 +433,7 @@ async function handle(ctx, req, res) {
     if (method !== 'GET' && method !== 'HEAD') { sendText(res, 405, 'Method not allowed'); return; }
     if (pathname === '/' || pathname === '/index.html') { await serveIndex(ctx, res); return; }
     if (STATIC[pathname]) { serveStatic(res, STATIC[pathname]); return; }
+    if (pathname.startsWith('/mail-view/')) { mailcatch.serveView(ctx, pathname, url.searchParams, res); return; }
     sendText(res, 404, tr('http.notFound'));
     return;
   }
@@ -540,6 +552,8 @@ async function buildState(ctx) {
   const projectViews = projects.views(ctx, snap, db.list);
   for (const pv of projectViews) {
     try { pv.points = timemachine.summary(ctx, pv.id); } catch { pv.points = { count: 0, last: null }; }
+    const raw = (ctx.store.data.projects || []).find((x) => x.id === pv.id);
+    pv.newErrors = raw ? devlogs.newErrorCount(ctx, raw) : 0;
   }
   const ext = projects.externalViews(ctx, snap);
   return {
@@ -548,6 +562,7 @@ async function buildState(ctx) {
     settings: ctx.store.data.settings,
     runtimes: runtimes.getCache(ctx),
     tools: { cloudflared: share.findCloudflared(ctx) },
+    inbox: inboxSummary(ctx, projectViews),
     projects: projectViews,
     dbServers: db.list,
     external: { php: ext, db: db.unknown },
@@ -743,13 +758,55 @@ route('POST', '/api/open-share', (ctx, { body }) => {
 // ------------------------------------------------------------------------------------------ shift from XAMPP / Laragon
 route('GET', '/api/import/plan', (ctx) => importer.plan(ctx));
 
+// ------------------------------------------------------------------------------------------ Inbox (mail, dumps, errors)
+function syncInbox(ctx) {
+  const changed = () => devtools.writeLive(ctx);
+  mailcatch.sync(ctx, changed);
+  dumps.sync(ctx, changed);
+}
+
+function inboxSummary(ctx, projectViews) {
+  const m = mailcatch.status(ctx);
+  const d = dumps.status(ctx);
+  const errors = projectViews.reduce((n, p) => n + (p.newErrors || 0), 0);
+  return { mail: m, dumps: d, errors, editor: ctx.store.data.settings.editor || 'vscode' };
+}
+
+function projectFilter(ctx, q) {
+  const id = q.get('project');
+  if (!id) return null;
+  return projects.getProject(ctx, id).id;
+}
+
+route('GET', '/api/mail', (ctx, { query }) => mailcatch.list(ctx, { project: projectFilter(ctx, query), q: query.get('q') || null, limit: Number(query.get('limit')) || 200 }));
+route('GET', '/api/mail/:id', (ctx, { params }) => mailcatch.detail(ctx, params.id));
+route('POST', '/api/mail/delete', (ctx, { body }) => mailcatch.remove(ctx, body.ids));
+route('POST', '/api/mail/clear', (ctx, { body }) => { needConfirm(body); return mailcatch.clear(ctx, body.project ? projects.getProject(ctx, String(body.project)).id : null); });
+route('POST', '/api/mail/read-all', (ctx) => mailcatch.markAllRead(ctx));
+route('GET', '/api/inbox/dumps', (ctx, { query }) => dumps.list(ctx, { project: projectFilter(ctx, query), after: Number(query.get('after')) || 0 }));
+route('POST', '/api/inbox/dumps/seen', (ctx) => dumps.markSeen(ctx));
+route('POST', '/api/inbox/dumps/clear', (ctx, { body }) => dumps.clear(ctx, body.project ? projects.getProject(ctx, String(body.project)).id : null));
+route('GET', '/api/projects/:id/errors', (ctx, { params, query }) => devlogs.list(ctx, params.id, { level: query.get('level') || 'errors', q: query.get('q') || null }));
+route('POST', '/api/projects/:id/errors/seen', (ctx, { params }) => devlogs.markSeen(ctx, params.id));
+
+// ------------------------------------------------------------------------------------------ Open from GitHub
+route('GET', '/api/clone/info', (ctx) => gitclone.info(ctx));
+route('POST', '/api/clone/check', (ctx, { body }) => { const c = gitclone.check(ctx, body); return { url: c.repo.url, dest: c.dest, name: c.name }; });
+route('POST', '/api/clone', (ctx, { body }) => {
+  const c = gitclone.check(ctx, body);
+  if (!gitclone.findGit(ctx)) throw new AppError('NO_GIT', tr('clone.noGit'), 409);
+  if (jobs.findRunning('clone')) throw new AppError('BUSY', tr('clone.busy'), 409);
+  return { jobId: jobs.createJob('clone', tr('job.clone', { name: c.name }), (log, job) => gitclone.cloneJob(ctx, c, log, job)), dest: c.dest };
+});
+
 // ------------------------------------------------------------------------------------------ phpstation.json (team file)
-route('POST', '/api/teamfile/plan', (ctx, { body }) => teamfile.plan(ctx, body.path));
+route('POST', '/api/teamfile/plan', (ctx, { body }) => teamfile.plan(ctx, body.path, { implicit: body.implicit === true }));
 route('POST', '/api/teamfile/apply', async (ctx, { body }) => {
   needConfirm(body);
-  const pl = await teamfile.plan(ctx, body.path);
+  const opts = { implicit: body.implicit === true };
+  const pl = await teamfile.plan(ctx, body.path, opts);
   if (jobs.findRunning('install') || jobs.findRunning('teamfile')) throw new AppError('BUSY', tr('inst.busy'), 409);
-  return { jobId: jobs.createJob('teamfile', tr('job.teamfile', { name: pl.name }), (log, job) => teamfile.applyJob(ctx, pl.path, log, job)) };
+  return { jobId: jobs.createJob('teamfile', tr('job.teamfile', { name: pl.name }), (log, job) => teamfile.applyJob(ctx, pl.path, log, job, opts)) };
 });
 route('GET', '/api/projects/:id/teamfile', (ctx, { params }) => {
   const p = projects.getProject(ctx, params.id);
@@ -947,6 +1004,7 @@ route('POST', '/api/settings', (ctx, { body }) => {
   ctx.store.save();
   i18n.setLang(next.lang);
   if (guardChanged) guard.ensure(ctx).catch((e) => ctx.log(`guard: ${e.message}`));
+  if (['mailCatcher', 'mailPort', 'catchDumps', 'dumpPort'].some((k) => k in body)) syncInbox(ctx);
   return { settings: next };
 });
 
