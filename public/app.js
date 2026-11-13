@@ -178,6 +178,11 @@
   // Mini syntax: parts separated by '|'; 'c:cx,cy,r' = circle, 'r:x,y,w,h,rx' = rect, otherwise a path.
   const ICONS = {
     grid: 'r:3.5,3.5,7,7,2|r:13.5,3.5,7,7,2|r:3.5,13.5,7,7,2|r:13.5,13.5,7,7,2',
+    inbox: 'M3 13h5l1.5 3h5L16 13h5|M5.6 5h12.8L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z',
+    mail: 'r:3,5,18,14,2.5|M3.8 6.8l8.2 6 8.2-6',
+    bug: 'r:7.5,8,9,12,4.5|M12 11v9|M7.5 13H4|M20 13h-3.5|M7.5 17H5|M19 17h-2.5|M9 8.5a3 3 0 0 1 6 0|M6.5 5.5l2 2|M17.5 5.5l-2 2',
+    branch: 'c:6,5,2.2|c:6,19,2.2|c:18,7,2.2|M6 7.2v9.6|M18 9.2c0 4.3-5 4.3-11 7.6',
+    phone: 'r:7,2.5,10,19,2.5|M11 18.5h2',
     db: 'M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3-3.58 3-8 3-8-1.34-8-3z|M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6|M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6',
     move: 'M4 8h13|M13 4l4 4-4 4|M20 16H7|M11 12l-4 4 4 4',
     cpu: 'r:6,6,12,12,2|r:9.5,9.5,5,5,1|M9 2.5v3|M15 2.5v3|M9 18.5v3|M15 18.5v3|M2.5 9h3|M2.5 15h3|M18.5 9h3|M18.5 15h3',
@@ -1079,6 +1084,7 @@
   // Page labels/subtitles are looked up at render time (t('page.<id>'), t('page.<id>.sub')).
   const PAGES = [
     {id: 'projects', icon: 'grid'},
+    {id: 'inbox', icon: 'inbox'},
     {id: 'db', icon: 'db'},
     {id: 'move', icon: 'move'},
     {id: 'runtimes', icon: 'cpu'},
@@ -1334,6 +1340,11 @@
     if (pc) { pc.textContent = runningProjects ? String(runningProjects) : ''; pc.title = tn('nav.projRunning', runningProjects); }
     const dc = byId('nav-count-db');
     if (dc) { dc.textContent = runningDb ? String(runningDb) : ''; dc.title = tn('nav.dbRunning', runningDb); }
+    const ib = st.inbox || {};
+    const ibNew = ((ib.mail && ib.mail.unread) || 0) + ((ib.dumps && ib.dumps.unread) || 0) + (ib.errors || 0);
+    const ic = byId('nav-count-inbox');
+    if (ic) { ic.textContent = ibNew ? String(ibNew > 99 ? '99+' : ibNew) : ''; ic.title = t('nav.inboxNew', {n: ibNew}); ic.classList.toggle('is-hot', ibNew > 0); }
+    try { inboxNotify(st); } catch (e) { recordError(e && e.stack ? e.stack : String(e)); }
 
     const chips = byId('live-chips');
     const runningJobs = st.jobs.filter((j) => j.status === 'running');
@@ -1891,6 +1902,7 @@
     root.append(
       h('div', {class: 'toolbar'},
         btn(t('proj.new'), {kind: 'primary', icon: 'plus', onClick: () => openAddProject()}),
+        btn(t('clone.btn'), {icon: 'branch', title: t('clone.btnTitle'), onClick: () => openClone()}),
         btn(t('proj.scan'), {icon: 'folder-search', onClick: () => openScanProjects()}),
         btn(t('imp.btn'), {icon: 'import', title: t('imp.btnTitle'), onClick: () => openImport()}),
         btn(t('team.btn'), {icon: 'users', title: t('team.btnTitle'), onClick: () => pickTeamFolder()}),
@@ -2270,6 +2282,7 @@
       info.router && !(info.router === 'none' && !info.isLaravel) ? chip(routerLabel(info.router), {title: 'Router: ' + info.router}) : null,
       info.composerPhp ? chip('php ' + info.composerPhp, {mono: true, title: t('proj.composerPhpTitle')}) : null,
       setupTag(p),
+      p.newErrors ? chip(tn('ib.err.cardChip', p.newErrors), {kind: 'bad', icon: 'bug', title: t('ib.err.cardTitle'), onClick: () => openInbox('errors', p.id)}) : null,
       wt.tag);
     const fixBar = canFixEnv ? h('div', {class: 'pc-fix'}, envFixButton(p, 'envfix')) : null;
 
@@ -2582,6 +2595,10 @@
         ? {label: t('share.stop'), icon: 'stop', onClick: () => stopShare(p, null)}
         : {label: t('share.menu'), icon: 'share', hint: 'trycloudflare.com', onClick: () => openShare(p)},
       {label: t('team.menuExport'), icon: 'users', hint: 'phpstation.json', onClick: () => openTeamExport(p)},
+      'sep',
+      {label: t('ib.menuMail'), icon: 'mail', onClick: () => openInbox('mail', p.id)},
+      {label: t('ib.menuDumps'), icon: 'code', onClick: () => openInbox('dumps', p.id)},
+      {label: t('ib.menuErrors'), icon: 'bug', hint: p.newErrors ? String(p.newErrors) : null, onClick: () => openInbox('errors', p.id)},
       'sep',
       {label: t('common.rename'), icon: 'pencil', onClick: () => renameProject(p)},
       {label: t('port.change'), icon: 'hash', disabled: on, title: on ? t('proj.stopFirst') : null, onClick: () => editProjectPort(p)},
@@ -3872,13 +3889,14 @@
     if (!r.ok) return failToast(t('np.pickFail'), r);
     if (r.path) openTeamPlan(r.path);
   }
-  async function openTeamPlan(path) {
+  async function openTeamPlan(path, o) {
+    const opt = o || {};
     const m = openModal({
-      title: t('team.title'), subtitle: path, icon: 'users', size: 'lg',
+      title: opt.implicit ? t('clone.planTitle') : t('team.title'), subtitle: path, icon: 'users', size: 'lg',
       body: h('div', {class: 'row muted'}, spinner(), t('team.reading')),
       actions: [{label: t('common.close'), value: null}]
     });
-    const r = await api('POST', '/api/teamfile/plan', {path});
+    const r = await api('POST', '/api/teamfile/plan', {path, implicit: !!opt.implicit});
     if (m.closed) return;
     if (!r.ok) { m.body.replaceChildren(callout('bad', t('team.readFail'), errorText(r))); return; }
     const row = (iconName, title, state, text) => h('div', {class: 'check-item'},
@@ -3916,11 +3934,12 @@
       h('div', {class: 'check-list'}, items),
       steps.length ? h('div', null, h('h4', {class: 'wiz-h'}, icon('list'), t('team.steps')),
         h('ol', {class: 'team-steps'}, steps.map((s) => h('li', null, icon(TEAM_STEP_ICON[s] || 'dot'), t('team.stepL.' + s))))) : null,
+      opt.implicit && !r.implicit ? null : opt.implicit ? callout('info', null, t('clone.planNote')) : null,
       callout('info', null, t('team.safe'))));
     m.setActions([
       {label: t('common.close'), value: null},
       {id: 'go', label: goBtnLabel, kind: 'primary', icon: 'bolt', disabled: blocked, onClick: async (mm, b) => {
-        const res = await modalBusy(mm, b, t('team.starting'), () => api('POST', '/api/teamfile/apply', {path, confirm: true}));
+        const res = await modalBusy(mm, b, t('team.starting'), () => api('POST', '/api/teamfile/apply', {path, confirm: true, implicit: !!opt.implicit}));
         if (!res.ok || !res.jobId) return failToast(t('team.applyFail'), res);
         mm.close();
         showJob(res.jobId, {
@@ -3931,7 +3950,8 @@
             S.flash = job.result.projectId;
             if (S.page !== 'projects') goPage('projects');
             const fresh = findProject(job.result.projectId);
-            if (fresh) toast('success', t('team.readyToast', {name: fresh.name}), null, {duration: 9000, actions: [{label: t('team.startNow'), onClick: () => startProject(findProject(fresh.id) || fresh)}]});
+            if (fresh && opt.autoStart) { toast('success', t('team.readyToast', {name: fresh.name}), t('clone.starting2')); startProject(findProject(fresh.id) || fresh); }
+            else if (fresh) toast('success', t('team.readyToast', {name: fresh.name}), null, {duration: 9000, actions: [{label: t('team.startNow'), onClick: () => startProject(findProject(fresh.id) || fresh)}]});
           }
         });
       }}
@@ -3959,6 +3979,618 @@
         }}
       ]
     });
+  }
+
+  /* ===================== Inbox page (mail, dumps, errors) ===================== */
+  const IB = {tab: 'mail', project: '', mailSel: null, mailQ: '', errLevel: 'errors', errQ: '', open: new Set(), dataSig: null, mounted: false};
+  (function () {
+    const tab = lsGet('devpanel.inboxTab');
+    if (tab === 'mail' || tab === 'dumps' || tab === 'errors') IB.tab = tab;
+  })();
+  pageImpl.inbox = {mount: mountInbox, update: updateInbox, unmount() { IB.mounted = false; IB.ui = null; }};
+
+  const EDITOR_LABEL = {vscode: 'VS Code', cursor: 'Cursor', phpstorm: 'PhpStorm', sublime: 'Sublime Text'};
+  /** vscode://file/D:/app/X.php:12 and friends (null when links are off). */
+  function editorUrl(file, line) {
+    const ed = (S.state && S.state.settings && S.state.settings.editor) || 'vscode';
+    if (!file || ed === 'none') return null;
+    const f = String(file).replace(/\\/g, '/');
+    const ln = Number(line) > 0 ? Number(line) : 1;
+    if (ed === 'vscode' || ed === 'cursor') return ed + '://file/' + encodeURI(f).replace(/#/g, '%23').replace(/\?/g, '%3F') + ':' + ln;
+    if (ed === 'phpstorm') return 'phpstorm://open?file=' + encodeURIComponent(String(file)) + '&line=' + ln;
+    if (ed === 'sublime') return 'subl://open?url=' + encodeURIComponent('file://' + f) + '&line=' + ln;
+    return null;
+  }
+  function projectRoot(id) { const p = id ? findProject(id) : null; return p ? p.path : null; }
+  function shortPath(file, root) {
+    const f = String(file || '');
+    const r = String(root || '').replace(/[\\/]+$/, '');
+    if (r && normPath(f).startsWith(normPath(r) + '\\')) return f.slice(r.length + 1);
+    return f;
+  }
+  function fileLink(file, line, root) {
+    if (!file) return null;
+    const text = shortPath(file, root) + (line ? ':' + line : '');
+    const url = editorUrl(file, line);
+    return url
+      ? h('a', {class: 'ib-file', href: url, title: t('ib.openEditor', {editor: EDITOR_LABEL[S.state.settings.editor || 'vscode'] || ''}) + '\n' + file, dir: 'ltr'}, icon('code'), h('span', null, text))
+      : h('span', {class: 'ib-file', title: file, dir: 'ltr'}, icon('file'), h('span', null, text));
+  }
+  function projectChip(id) {
+    const p = id ? findProject(id) : null;
+    return p ? chip(p.name, {cls: 'ib-proj-chip', icon: 'grid', title: p.path}) : null;
+  }
+  function agoEl(at, cls) {
+    return at ? h('span', {class: cls || 'ib-time', dataset: {since: at, mode: 'ago'}, title: new Date(parseTime(at)).toLocaleString()}, agoText(at)) : null;
+  }
+
+  /** Opens the Inbox on a tab (optionally filtered to a project / with a mail selected). */
+  function openInbox(tab, projectId, mailId) {
+    IB.tab = tab;
+    lsSet('devpanel.inboxTab', tab);
+    if (projectId !== undefined) IB.project = projectId || '';
+    if (mailId) IB.mailSel = mailId;
+    IB.dataSig = null;
+    if (S.page === 'inbox' && IB.mounted) inboxTab(tab);
+    else goPage('inbox');
+  }
+
+  function editorMenuItems() {
+    const cur = (S.state && S.state.settings.editor) || 'vscode';
+    const set = async (ed) => {
+      const r = await api('POST', '/api/settings', {editor: ed});
+      if (!r.ok) return failToast(t('ib.saveFail'), r);
+      await refreshNow();
+      IB.dataSig = null;
+      if (IB.mounted) inboxLoad(true);
+    };
+    return [{heading: t('ib.editorHead')}]
+      .concat(['vscode', 'cursor', 'phpstorm', 'sublime'].map((ed) => ({label: EDITOR_LABEL[ed], checked: cur === ed, onClick: () => set(ed)})))
+      .concat([{label: t('ib.editorNone'), checked: cur === 'none', onClick: () => set('none')}]);
+  }
+
+  function mountInbox(root) {
+    IB.mounted = true;
+    IB.ui = {};
+    const tabs = h('div', {class: 'seg ib-tabs', role: 'tablist', 'aria-label': t('ib.tabsAria')});
+    IB.ui.tabs = {};
+    for (const x of [{id: 'mail', icon: 'mail'}, {id: 'dumps', icon: 'code'}, {id: 'errors', icon: 'bug'}]) {
+      const count = h('span', {class: 'seg-count ib-count'});
+      const b = h('button', {type: 'button', class: 'seg-btn', role: 'tab', dataset: {tab: x.id}}, icon(x.icon), h('span', null, t('ib.tab.' + x.id)), count);
+      b.addEventListener('click', () => inboxTab(x.id));
+      IB.ui.tabs[x.id] = {btn: b, count};
+      tabs.appendChild(b);
+    }
+    IB.ui.proj = h('select', {class: 'input ib-proj-select', 'aria-label': t('ib.projectAria')});
+    IB.ui.proj.addEventListener('change', () => { IB.project = IB.ui.proj.value; IB.dataSig = null; IB.mailSel = null; inboxLoad(true); });
+    IB.ui.status = h('div', {class: 'ib-status'});
+    IB.ui.editor = menuButton(t('ib.editor'), 'code', editorMenuItems, {withText: true, kind: 'ghost', size: 'sm'});
+    IB.ui.body = h('div', {class: 'ib-body'});
+    root.append(h('div', {class: 'toolbar ib-toolbar'}, tabs, IB.ui.proj, h('span', {class: 'spacer'}), IB.ui.status, IB.ui.editor), IB.ui.body);
+    inboxTab(IB.tab, true);
+  }
+
+  function inboxTab(id, first) {
+    IB.tab = id;
+    lsSet('devpanel.inboxTab', id);
+    if (!IB.ui) return;
+    for (const k of Object.keys(IB.ui.tabs)) IB.ui.tabs[k].btn.setAttribute('aria-pressed', String(k === id));
+    IB.dataSig = null;
+    IB.ui.body.replaceChildren(h('div', {class: 'row muted ib-loading'}, spinner(), t('common.loading')));
+    IB.view = null;
+    if (S.state) {
+      fillInboxProjects(S.state, true);
+      renderInboxStatus(S.state);
+    }
+    if (!first || S.state) inboxLoad(true);
+  }
+
+  function fillInboxProjects(st, force) {
+    const sel = IB.ui.proj;
+    const sig = lang + '|' + IB.tab + '|' + st.projects.map((p) => p.id + ':' + p.name).join('|');
+    if (!force && sel.__sig === sig) return;
+    sel.__sig = sig;
+    const opts = [h('option', {value: ''}, IB.tab === 'errors' ? t('ib.pickProject') : t('ib.allProjects'))];
+    for (const p of st.projects) opts.push(h('option', {value: p.id}, p.name));
+    sel.replaceChildren(...opts);
+    if (IB.project && !st.projects.some((p) => p.id === IB.project)) IB.project = '';
+    sel.value = IB.project;
+  }
+
+  function renderInboxStatus(st) {
+    const ib = st.inbox || {};
+    const s = IB.tab === 'mail' ? ib.mail : IB.tab === 'dumps' ? ib.dumps : null;
+    const ed = st.settings.editor || 'vscode';
+    const label = IB.ui.editor.querySelector('.btn-label');
+    if (label) label.textContent = ed === 'none' ? t('ib.editorOff') : EDITOR_LABEL[ed];
+    IB.ui.editor.hidden = IB.tab === 'mail';
+    const sig = [lang, IB.tab, s && s.enabled, s && s.listening, s && s.error, s && s.port].join('|');
+    if (IB.ui.status.__sig === sig) return;
+    IB.ui.status.__sig = sig;
+    if (!s) { IB.ui.status.replaceChildren(); return; }
+    const key = IB.tab === 'mail' ? 'mailCatcher' : 'catchDumps';
+    const state = !s.enabled ? chip(t('ib.off'), {dot: 'dot'})
+      : s.listening ? chip(t(IB.tab === 'mail' ? 'ib.mail.listening' : 'ib.dump.listening', {port: s.port}), {kind: 'ok', dot: 'dot-ok pulse', mono: true})
+        : s.error === 'PORT_BUSY' ? chip(t('ib.portBusy', {port: s.port}), {kind: 'warn', icon: 'alert', title: t('ib.portBusyHint')})
+          : chip(t('ib.starting'), {dot: 'dot-busy pulse'});
+    const sw = makeSwitch({checked: !!s.enabled, label: t(IB.tab === 'mail' ? 'ib.mail.switch' : 'ib.dump.switch'), onToggle: async (v, el) => {
+      el.disabled = true;
+      const r = await api('POST', '/api/settings', {[key]: v});
+      el.disabled = false;
+      if (!r.ok) return failToast(t('ib.saveFail'), r);
+      toast('success', v ? t(IB.tab === 'mail' ? 'ib.mail.onToast' : 'ib.dump.onToast') : t(IB.tab === 'mail' ? 'ib.mail.offToast' : 'ib.dump.offToast'));
+      await refreshNow();
+    }});
+    IB.ui.status.replaceChildren(state, h('span', {class: 'row ib-switch'}, sw, h('span', {class: 'small muted'}, t(IB.tab === 'mail' ? 'ib.mail.switch' : 'ib.dump.switch'))));
+  }
+
+  function updateInbox(st) {
+    if (!IB.ui) return;
+    const ib = st.inbox || {};
+    const m = ib.mail || {};
+    const d = ib.dumps || {};
+    IB.ui.tabs.mail.count.textContent = m.unread ? String(m.unread) : '';
+    IB.ui.tabs.dumps.count.textContent = d.unread ? String(d.unread) : '';
+    IB.ui.tabs.errors.count.textContent = ib.errors ? String(ib.errors) : '';
+    for (const k of Object.keys(IB.ui.tabs)) IB.ui.tabs[k].count.classList.toggle('is-hot', !!IB.ui.tabs[k].count.textContent);
+    fillInboxProjects(st, false);
+    renderInboxStatus(st);
+    const sig = IB.tab === 'mail' ? [m.count, m.latest && m.latest.id].join('|')
+      : IB.tab === 'dumps' ? [d.newest, d.count].join('|')
+        : st.projects.map((p) => p.id + ':' + (p.newErrors || 0)).join(',');
+    if (IB.dataSig !== sig) {
+      const first = IB.dataSig === null;
+      IB.dataSig = sig;
+      if (!first) inboxLoad(false);
+    }
+  }
+
+  function inboxLoad(reset) {
+    if (!IB.mounted) return;
+    if (IB.tab === 'mail') loadMail(reset);
+    else if (IB.tab === 'dumps') loadDumps(reset);
+    else loadErrors(reset);
+  }
+
+  /* ----- Mail ----- */
+  function addrText(a) { return a ? (a.name ? a.name + ' <' + a.address + '>' : a.address) : ''; }
+  function addrShort(a) { return a ? (a.name || a.address) : ''; }
+
+  async function loadMail(reset) {
+    const qs = new URLSearchParams();
+    if (IB.project) qs.set('project', IB.project);
+    if (IB.mailQ) qs.set('q', IB.mailQ);
+    const r = await api('GET', '/api/mail?' + qs.toString());
+    if (!IB.mounted || IB.tab !== 'mail') return;
+    if (!r.ok) { IB.ui.body.replaceChildren(callout('bad', t('ib.loadFail'), errorText(r))); return; }
+    const items = arr(r.items);
+    if (!IB.view || IB.view.kind !== 'mail' || reset) buildMailView(r);
+    if (!items.length && !IB.mailQ) { IB.view.split.hidden = true; IB.view.empty.hidden = false; IB.view.empty.replaceChildren(mailEmpty(r.status || {})); } else { IB.view.split.hidden = false; IB.view.empty.hidden = true; }
+    IB.view.total.textContent = IB.mailQ ? tn('ib.mail.found', items.length) : tn('ib.mail.count', items.length);
+    renderMailList(items);
+    if (IB.mailSel && items.some((x) => x.id === IB.mailSel)) { if (reset || !IB.view.shown) openMail(IB.mailSel); }
+    else if (items.length && (reset || !IB.mailSel)) openMail(items[0].id);
+    else if (!items.length) { IB.mailSel = null; IB.view.viewer.replaceChildren(h('div', {class: 'ib-viewer-empty muted'}, icon('mail'), t('ib.mail.pick'))); }
+  }
+
+  function mailEmpty(s) {
+    const port = s.port || 1025;
+    const snippet = 'MAIL_MAILER=smtp\nMAIL_HOST=127.0.0.1\nMAIL_PORT=' + port + '\nMAIL_ENCRYPTION=null';
+    return h('div', {class: 'ib-empty'},
+      emptyState({icon: 'mail', title: t('ib.mail.emptyTitle'), text: t('ib.mail.emptyText')}),
+      h('div', {class: 'ib-how'},
+        h('div', {class: 'ib-how-item'}, icon('play'), h('div', null, h('b', null, t('ib.mail.how1t')), h('p', null, t('ib.mail.how1')))),
+        h('div', {class: 'ib-how-item'}, icon('shield'), h('div', null, h('b', null, t('ib.mail.how2t')), h('p', null, t('ib.mail.how2')))),
+        h('div', {class: 'ib-how-item'}, icon('terminal'), h('div', null, h('b', null, t('ib.mail.how3t')), h('p', null, t('ib.mail.how3')),
+          h('div', {class: 'ib-snippet'}, h('pre', {dir: 'ltr'}, snippet), copyButton(snippet))))));
+  }
+
+  function buildMailView() {
+    const search = h('input', {class: 'input', type: 'search', placeholder: t('ib.mail.searchPh'), 'aria-label': t('ib.mail.searchPh'), value: IB.mailQ, autocomplete: 'off', spellcheck: 'false'});
+    search.addEventListener('input', debounce(() => { IB.mailQ = search.value.trim(); loadMail(false); }, 300));
+    const total = h('span', {class: 'muted small'});
+    const list = h('div', {class: 'ib-mail-list', role: 'listbox', 'aria-label': t('ib.tab.mail')});
+    const viewer = h('div', {class: 'ib-viewer'});
+    const readAll = btn(t('ib.mail.readAll'), {size: 'sm', kind: 'ghost', icon: 'check', onClick: async () => { await api('POST', '/api/mail/read-all', {}); await refreshNow(); loadMail(false); }});
+    const clearAll = btn(t('ib.mail.clear'), {size: 'sm', kind: 'ghost', icon: 'trash', onClick: async () => {
+      const yes = await confirmDialog({title: t('ib.mail.clearQ'), danger: true, icon: 'trash', message: IB.project ? t('ib.mail.clearProjMsg', {name: (findProject(IB.project) || {}).name || ''}) : t('ib.mail.clearMsg'), confirmLabel: t('ib.mail.clearYes')});
+      if (!yes) return;
+      const r = await api('POST', '/api/mail/clear', {confirm: true, project: IB.project || null});
+      if (!r.ok) return failToast(t('ib.mail.clearFail'), r);
+      IB.mailSel = null;
+      toast('success', tn('ib.mail.cleared', r.removed || 0));
+      await refreshNow();
+      loadMail(true);
+    }});
+    const split = h('div', {class: 'ib-split'},
+      h('section', {class: 'ib-col ib-col-list panel'},
+        h('div', {class: 'ib-col-head'}, h('div', {class: 'search ib-search'}, icon('search'), search)),
+        h('div', {class: 'ib-col-sub'}, total, h('span', {class: 'spacer'}), readAll, clearAll),
+        list),
+      h('section', {class: 'ib-col ib-col-view panel'}, viewer));
+    const empty = h('div', {hidden: true});
+    IB.view = {kind: 'mail', list, viewer, total, split, empty, shown: false};
+    IB.ui.body.replaceChildren(split, empty);
+  }
+
+  function renderMailList(items) {
+    const list = IB.view.list;
+    if (!items.length) { list.replaceChildren(h('div', {class: 'ib-list-empty muted small'}, t('ib.mail.noMatch'))); return; }
+    list.replaceChildren(...items.map((x) => {
+      const to = arr(x.to).map(addrShort).filter(Boolean);
+      const row = h('button', {type: 'button', class: ['ib-mail', !x.read && 'is-unread', IB.mailSel === x.id && 'is-active'], role: 'option', 'aria-selected': String(IB.mailSel === x.id), dataset: {id: x.id}},
+        h('span', {class: 'ib-mail-top'},
+          !x.read ? h('span', {class: 'ib-unread-dot', 'aria-label': t('ib.mail.unread')}) : null,
+          h('span', {class: 'ib-mail-from'}, addrShort(x.from) || t('ib.mail.noFrom')),
+          agoEl(x.at)),
+        h('span', {class: 'ib-mail-subj'}, x.subject || t('ib.noSubject')),
+        x.preview ? h('span', {class: 'ib-mail-prev'}, x.preview) : null,
+        h('span', {class: 'ib-mail-meta'},
+          to.length ? h('span', {class: 'ib-mail-to', dir: 'auto'}, t('ib.mail.toShort', {to: to.slice(0, 2).join(', ') + (to.length > 2 ? ' +' + (to.length - 2) : '')})) : null,
+          x.attachments ? h('span', {class: 'ib-att-ic', title: tn('ib.mail.atts', x.attachments)}, icon('file'), String(x.attachments)) : null,
+          !IB.project ? projectChip(x.project) : null));
+      row.addEventListener('click', () => openMail(x.id));
+      return row;
+    }));
+  }
+
+  async function openMail(id) {
+    IB.mailSel = id;
+    IB.view.shown = true;
+    for (const el of IB.view.list.querySelectorAll('.ib-mail')) {
+      const on = el.dataset.id === id;
+      el.classList.toggle('is-active', on);
+      el.setAttribute('aria-selected', String(on));
+      if (on) { el.classList.remove('is-unread'); const dot = el.querySelector('.ib-unread-dot'); if (dot) dot.remove(); }
+    }
+    const viewer = IB.view.viewer;
+    viewer.replaceChildren(h('div', {class: 'row muted ib-loading'}, spinner(), t('common.loading')));
+    const r = await api('GET', '/api/mail/' + enc(id));
+    if (!IB.mounted || IB.tab !== 'mail' || IB.mailSel !== id) return;
+    if (!r.ok) { viewer.replaceChildren(callout('bad', t('ib.loadFail'), errorText(r))); return; }
+    refreshSoon();
+    const m = r.mail || {};
+    const people = [
+      [t('ib.mail.from'), addrText(m.from)],
+      arr(m.to).length ? [t('ib.mail.to'), arr(m.to).map(addrText).join(', ')] : null,
+      arr(m.cc).length ? [t('ib.mail.cc'), arr(m.cc).map(addrText).join(', ')] : null,
+      arr(m.bcc).length ? [t('ib.mail.bcc'), arr(m.bcc).join(', '), t('ib.mail.bccHint')] : null,
+      arr(r.replyTo).length ? [t('ib.mail.replyTo'), arr(r.replyTo).map(addrText).join(', ')] : null
+    ].filter(Boolean);
+    const views = h('div', {class: 'seg ib-mail-views', role: 'tablist'});
+    const width = h('div', {class: 'seg ib-width', role: 'group', 'aria-label': t('ib.mail.widthAria')});
+    const pane = h('div', {class: 'ib-mail-pane'});
+    const frame = r.htmlUrl ? h('iframe', {class: 'ib-frame', src: r.htmlUrl, title: m.subject || t('ib.noSubject'), sandbox: 'allow-popups allow-popups-to-escape-sandbox', referrerpolicy: 'no-referrer', loading: 'lazy'}) : null;
+    const frameWrap = frame ? h('div', {class: 'ib-frame-wrap'}, frame) : null;
+    const textPane = h('pre', {class: 'ib-text', dir: 'auto'}, r.text != null ? r.text : t('ib.mail.noText'));
+    const headPane = h('div', {class: 'ib-headers'}, arr(r.headers).map((x) => h('div', {class: 'ib-hrow'}, h('span', {class: 'ib-hname', dir: 'ltr'}, x.name), h('span', {class: 'ib-hval', dir: 'auto'}, x.value))));
+    const show = (which) => {
+      for (const b of views.children) b.setAttribute('aria-pressed', String(b.dataset.v === which));
+      width.hidden = which !== 'html';
+      pane.replaceChildren(which === 'html' && frameWrap ? frameWrap : which === 'headers' ? headPane : textPane);
+      lsSet('devpanel.mailView', which);
+    };
+    const opts = [frame ? {v: 'html', icon: 'eye', label: t('ib.mail.html')} : null, {v: 'text', icon: 'file', label: t('ib.mail.text')}, {v: 'headers', icon: 'list', label: t('ib.mail.headers')}].filter(Boolean);
+    for (const o of opts) {
+      const b = h('button', {type: 'button', class: 'seg-btn', role: 'tab', dataset: {v: o.v}}, icon(o.icon), o.label);
+      b.addEventListener('click', () => show(o.v));
+      views.appendChild(b);
+    }
+    for (const w of [{v: 'desktop', icon: 'monitor', label: t('ib.mail.desktop')}, {v: 'mobile', icon: 'phone', label: t('ib.mail.mobile')}]) {
+      const b = h('button', {type: 'button', class: 'seg-btn', 'aria-pressed': String(w.v === (lsGet('devpanel.mailWidth') || 'desktop')), title: w.label, 'aria-label': w.label}, icon(w.icon));
+      b.addEventListener('click', () => {
+        lsSet('devpanel.mailWidth', w.v);
+        for (const x of width.children) x.setAttribute('aria-pressed', String(x === b));
+        if (frameWrap) frameWrap.classList.toggle('is-mobile', w.v === 'mobile');
+      });
+      width.appendChild(b);
+    }
+    if (frameWrap) frameWrap.classList.toggle('is-mobile', lsGet('devpanel.mailWidth') === 'mobile');
+    const atts = arr(r.attachments).filter((a) => !a.inline);
+    const del = btn(t('ib.mail.delete'), {size: 'sm', kind: 'ghost', icon: 'trash', onClick: async () => {
+      const res = await api('POST', '/api/mail/delete', {ids: [id]});
+      if (!res.ok) return failToast(t('ib.mail.clearFail'), res);
+      IB.mailSel = null;
+      await refreshNow();
+      loadMail(true);
+    }});
+    viewer.replaceChildren(
+      h('div', {class: 'ib-mail-head'},
+        h('div', {class: 'row ib-mail-titlebar'},
+          h('h2', {class: 'ib-mail-title', dir: 'auto'}, m.subject || t('ib.noSubject')),
+          h('span', {class: 'spacer'}),
+          h('a', {class: 'btn btn-ghost btn-sm', href: r.rawUrl, download: (m.id || 'mail') + '.eml', title: t('ib.mail.eml')}, icon('download'), h('span', {class: 'btn-label'}, '.eml')),
+          del),
+        h('div', {class: 'ib-people'}, people.map((x) => h('div', {class: 'ib-prow'}, h('span', {class: 'ib-plabel'}, x[0]), h('span', {class: 'ib-pval', dir: 'auto'}, x[1]), x[2] ? h('span', {class: 'ib-phint', title: x[2]}, icon('info')) : null))),
+        h('div', {class: 'row ib-mail-sub'}, agoEl(m.at), m.size ? h('span', {class: 'muted small'}, fmtBytes(m.size)) : null, projectChip(m.project), h('span', {class: 'spacer'}), width, views)),
+      atts.length ? h('div', {class: 'ib-atts'}, atts.map((a) => h('a', {class: 'ib-att', href: a.url, download: a.filename, title: a.type}, icon('file'), h('span', {class: 'ib-att-name', dir: 'auto'}, a.filename), h('span', {class: 'muted small'}, fmtBytes(a.size))))) : null,
+      pane);
+    const saved = lsGet('devpanel.mailView');
+    show(opts.some((o) => o.v === saved) ? saved : opts[0].v);
+  }
+
+  /* ----- Dumps ----- */
+  const KEY_PREFIX = {public: '+', protected: '#', private: '-', meta: '~', dynamic: '+'};
+  function dumpKey(n) {
+    if (n.k == null || n.k === undefined) return null;
+    if (n.kt === 'index') return h('span', {class: 'dk-index'}, String(n.k), h('span', {class: 'dk-arrow'}, ' => '));
+    if (n.kt === 'key') return h('span', {class: 'dk-key'}, '"' + n.k + '"', h('span', {class: 'dk-arrow'}, ' => '));
+    return h('span', {class: 'dk-prop dk-' + n.kt, title: n.kt + (n.scope ? ' (' + n.scope + ')' : '')}, (KEY_PREFIX[n.kt] || '') + n.k, h('span', {class: 'dk-arrow'}, ': '));
+  }
+  function dumpScalar(n) {
+    if (n.t === 'string') {
+      const cut = n.cut ? h('span', {class: 'dv-cut'}, '…+' + n.cut) : null;
+      return h('span', {class: 'dv-str', title: (n.bin ? 'binary ' : '') + 'string(' + n.len + ')'}, '"', h('span', {class: 'dv-strtxt'}, n.v), '"', cut);
+    }
+    if (n.t === 'integer' || n.t === 'double') return h('span', {class: 'dv-num'}, String(n.v));
+    if (n.t === 'boolean') return h('span', {class: 'dv-bool'}, n.v ? 'true' : 'false');
+    if (n.t === 'NULL') return h('span', {class: 'dv-null'}, 'null');
+    return h('span', {class: 'dv-other'}, n.v == null ? n.t : String(n.v));
+  }
+  function dumpNode(n, depth) {
+    if (!n) return h('span', {class: 'dv-null'}, '?');
+    const key = dumpKey(n);
+    if (n.t !== 'array' && n.t !== 'object' && n.t !== 'resource') return h('div', {class: 'dn'}, key, dumpScalar(n));
+    const kids = arr(n.c);
+    const head = n.t === 'array'
+      ? h('span', {class: 'dv-type'}, 'array:' + (n.n != null ? n.n : kids.length), ' ', h('span', {class: 'dv-br'}, '['))
+      : h('span', {class: 'dv-type'}, h('span', {class: n.t === 'object' ? 'dv-class' : 'dv-res'}, n.cls || n.t), n.id ? h('span', {class: 'dv-id'}, ' #' + n.id) : null, ' ', h('span', {class: 'dv-br'}, '{'));
+    const closeCh = n.t === 'array' ? ']' : '}';
+    const close = h('span', {class: 'dv-br'}, closeCh);
+    if (!kids.length) {
+      const note = n.ref ? h('span', {class: 'dv-cut'}, ' …') : n.cut ? h('span', {class: 'dv-cut'}, ' …' + n.cut) : null;
+      return h('div', {class: 'dn'}, key, head, note, close);
+    }
+    const det = h('details', {class: 'dn dn-hash', open: depth < 2},
+      h('summary', null, key, head, h('span', {class: 'dv-fold muted'}, ' … '), h('span', {class: 'dv-fold dv-br'}, closeCh)),
+      h('div', {class: 'dn-kids'}, kids.map((c) => dumpNode(c, depth + 1)), n.cut ? h('div', {class: 'dv-cut'}, '…' + n.cut) : null),
+      h('div', {class: 'dn-close'}, close));
+    return det;
+  }
+
+  async function loadDumps() {
+    const qs = new URLSearchParams();
+    if (IB.project) qs.set('project', IB.project);
+    const r = await api('GET', '/api/inbox/dumps?' + qs.toString());
+    if (!IB.mounted || IB.tab !== 'dumps') return;
+    if (!r.ok) { IB.ui.body.replaceChildren(callout('bad', t('ib.loadFail'), errorText(r))); return; }
+    const items = arr(r.items);
+    const st = r.status || {};
+    if (st.unread) api('POST', '/api/inbox/dumps/seen', {}).then(() => refreshSoon());
+    const clear = btn(t('ib.dump.clear'), {size: 'sm', kind: 'ghost', icon: 'eraser', disabled: !items.length, onClick: async () => {
+      await api('POST', '/api/inbox/dumps/clear', {project: IB.project || null});
+      await refreshNow();
+      loadDumps();
+    }});
+    if (!items.length) {
+      IB.ui.body.replaceChildren(h('div', {class: 'ib-empty'},
+        emptyState({icon: 'code', title: t('ib.dump.emptyTitle'), text: t('ib.dump.emptyText')}),
+        h('div', {class: 'ib-how'},
+          h('div', {class: 'ib-how-item'}, icon('code'), h('div', null, h('b', null, t('ib.dump.how1t')), h('p', null, t('ib.dump.how1')), h('div', {class: 'ib-snippet'}, h('pre', {dir: 'ltr'}, "dump($order);\ndump(request()->all());"), copyButton("dump($order);")))),
+          h('div', {class: 'ib-how-item'}, icon('eye'), h('div', null, h('b', null, t('ib.dump.how2t')), h('p', null, t('ib.dump.how2')))),
+          h('div', {class: 'ib-how-item'}, icon('info'), h('div', null, h('b', null, t('ib.dump.how3t')), h('p', null, t('ib.dump.how3')))))));
+      return;
+    }
+    const cards = items.map((x) => {
+      const root = projectRoot(x.project);
+      const where = x.uri ? h('span', {class: 'ib-req', dir: 'ltr'}, x.method ? h('b', null, x.method + ' ') : null, x.uri) : x.cli ? h('span', {class: 'ib-req', dir: 'ltr', title: x.cli}, h('b', null, 'CLI ')) : null;
+      return h('article', {class: 'ib-dump panel'},
+        h('header', {class: 'ib-dump-head'},
+          fileLink(x.file, x.line, root),
+          x.label ? chip(x.label, {kind: 'accent'}) : null,
+          where,
+          h('span', {class: 'spacer'}),
+          !IB.project ? projectChip(x.project) : null,
+          agoEl(x.at),
+          x.text ? copyButton(x.text, t('ib.dump.copy')) : null),
+        x.ok
+          ? h('div', {class: 'ib-tree', dir: 'ltr'}, dumpNode(x.tree, 0), x.truncated ? h('div', {class: 'dv-cut'}, t('ib.dump.truncated')) : null)
+          : callout('warn', t('ib.dump.decodeFail'), x.error === 'NO_VAR_DUMPER' ? t('ib.dump.noVarDumper') : x.error));
+    });
+    IB.ui.body.replaceChildren(
+      h('div', {class: 'row ib-dump-bar'}, h('span', {class: 'muted small'}, tn('ib.dump.count', items.length)), h('span', {class: 'spacer'}), h('span', {class: 'muted small'}, t('ib.dump.memoryNote')), clear),
+      h('div', {class: 'ib-dumps'}, cards));
+  }
+
+  /* ----- Errors ----- */
+  function levelKind(l) { return l === 'WARNING' ? 'warn' : /^(ERROR|CRITICAL|ALERT|EMERGENCY)$/.test(l) ? 'bad' : 'info'; }
+  async function loadErrors(reset) {
+    if (!IB.project) {
+      const ps = S.state ? S.state.projects : [];
+      IB.ui.body.replaceChildren(ps.length ? h('section', {class: 'panel'},
+        h('div', {class: 'panel-head'}, h('div', {class: 'panel-title'}, icon('bug'), t('ib.err.pickTitle')), h('span', {class: 'panel-sub'}, t('ib.err.pickSub'))),
+        h('div', {class: 'check-list'}, ps.slice().sort((a, b) => (b.newErrors || 0) - (a.newErrors || 0)).map((p) => {
+          const row = h('div', {class: 'check-item', tabindex: '0', role: 'button'},
+            h('span', {class: ['check-icon', p.newErrors ? 'is-bad' : 'is-ok']}, icon(p.newErrors ? 'bug' : 'check-circle')),
+            h('span', {class: 'check-main grow'}, h('span', {class: 'check-title'}, p.name), h('span', {class: 'check-desc ltr'}, p.path)),
+            p.newErrors ? chip(tn('ib.err.newChip', p.newErrors), {kind: 'bad'}) : chip(t('ib.err.clean'), {kind: 'ok'}));
+          const go = () => { IB.project = p.id; IB.ui.proj.value = p.id; IB.dataSig = null; loadErrors(true); };
+          row.addEventListener('click', go);
+          row.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+          return row;
+        }))) : emptyState({icon: 'bug', title: t('ib.err.noProjects')}));
+      return;
+    }
+    const pid = IB.project;
+    const qs = new URLSearchParams({level: IB.errLevel});
+    if (IB.errQ) qs.set('q', IB.errQ);
+    const r = await api('GET', '/api/projects/' + enc(pid) + '/errors?' + qs.toString());
+    if (!IB.mounted || IB.tab !== 'errors' || IB.project !== pid) return;
+    if (!r.ok) { IB.ui.body.replaceChildren(callout('bad', t('ib.loadFail'), errorText(r))); return; }
+    const p = findProject(pid) || {};
+    const counts = r.counts || {};
+    if (!IB.view || IB.view.kind !== 'errors' || IB.view.pid !== pid || reset) {
+      const levels = h('div', {class: 'seg', role: 'group', 'aria-label': t('ib.err.levelAria')});
+      const lv = {};
+      for (const k of ['errors', 'warnings', 'all']) {
+        const count = h('span', {class: 'seg-count'});
+        const b = h('button', {type: 'button', class: 'seg-btn', 'aria-pressed': String(IB.errLevel === k)}, t('ib.err.lv.' + k), count);
+        b.addEventListener('click', () => { IB.errLevel = k; for (const x of Object.keys(lv)) lv[x].btn.setAttribute('aria-pressed', String(x === k)); loadErrors(false); });
+        lv[k] = {btn: b, count};
+        levels.appendChild(b);
+      }
+      const search = h('input', {class: 'input', type: 'search', placeholder: t('ib.err.searchPh'), 'aria-label': t('ib.err.searchPh'), value: IB.errQ, autocomplete: 'off', spellcheck: 'false'});
+      search.addEventListener('input', debounce(() => { IB.errQ = search.value.trim(); loadErrors(false); }, 300));
+      const seen = btn(t('ib.err.seen'), {size: 'sm', icon: 'check', onClick: async (ev) => {
+        const b = ev.currentTarget;
+        setBusy(b, true);
+        const res = await api('POST', '/api/projects/' + enc(pid) + '/errors/seen', {});
+        setBusy(b, false);
+        if (!res.ok) return failToast(t('ib.saveFail'), res);
+        await refreshNow();
+        loadErrors(false);
+      }});
+      const list = h('div', {class: 'ib-errs'});
+      IB.view = {kind: 'errors', pid, lv, list, seen, files: h('div', {class: 'muted small ib-files'})};
+      IB.ui.body.replaceChildren(
+        h('div', {class: 'row ib-err-bar'}, levels, h('div', {class: 'search ib-search'}, icon('search'), search), h('span', {class: 'spacer'}), seen),
+        list, IB.view.files);
+    }
+    for (const k of ['errors', 'warnings', 'all']) IB.view.lv[k].count.textContent = counts[k] ? String(counts[k]) : '';
+    IB.view.seen.disabled = !counts.newErrors;
+    IB.view.files.replaceChildren(arr(r.files).length ? h('span', {dir: 'ltr'}, t('ib.err.readFrom') + ' ' + arr(r.files).map((f) => shortPath(f, p.path)).join(' · ')) : h('span', null, t('ib.err.noLog', {dir: r.logDir || ''})));
+    const groups = arr(r.groups);
+    if (!groups.length) {
+      IB.view.list.replaceChildren(emptyState({small: true, icon: 'check-circle', title: IB.errQ ? t('ib.err.noMatch') : t('ib.err.noneTitle'), text: IB.errQ ? null : t('ib.err.noneText')}));
+      return;
+    }
+    IB.view.list.replaceChildren(...groups.map((g) => errorRow(g, p.path)));
+  }
+
+  function errorRow(g, root) {
+    const e = g.entry || {};
+    const ex = e.exception;
+    const when = e.ts ? new Date(e.ts).toISOString() : null;
+    const isOpen = IB.open.has(g.key);
+    const head = h('div', {class: 'ib-err-head', role: 'button', tabindex: '0', 'aria-expanded': String(isOpen)},
+      h('span', {class: 'ib-err-lv'}, chip(e.level || '?', {kind: levelKind(e.level)}), g.count > 1 ? h('span', {class: 'ib-err-x', title: tn('ib.err.times', g.count)}, '×' + g.count) : null),
+      h('span', {class: 'ib-err-main'},
+        h('span', {class: 'ib-err-msg', dir: 'auto'}, (ex && ex.message) || e.message || '-'),
+        h('span', {class: 'ib-err-sub'},
+          ex ? h('code', {class: 'ib-err-class', dir: 'ltr'}, ex.class.split('\\').pop()) : (e.source === 'php' ? h('code', {class: 'ib-err-class'}, 'PHP') : null),
+          e.where ? fileLink(e.where.file, e.where.line, root) : null,
+          g.newCount ? chip(t('ib.err.new'), {kind: 'bad', cls: 'ib-new'}) : null)),
+      h('span', {class: 'ib-err-when'}, agoEl(when), h('span', {class: 'ib-chev'}, icon('chevron-down'))));
+    const body = h('div', {class: 'ib-err-body', hidden: !isOpen});
+    const row = h('div', {class: ['ib-err', 'is-' + levelKind(e.level), isOpen && 'is-open', g.newCount && 'is-new']}, head, body);
+    const fill = () => {
+      if (body.__filled) return;
+      body.__filled = true;
+      const frames = arr(e.frames);
+      const rows = [];
+      let vendorRun = [];
+      const flush = () => {
+        if (!vendorRun.length) return;
+        const run = vendorRun;
+        vendorRun = [];
+        const more = h('button', {type: 'button', class: 'ib-vendor-toggle'}, icon('chevron-right'), tn('ib.err.vendorFrames', run.length));
+        const box = h('div', {class: 'ib-vendor', hidden: true}, run.map(frameRow));
+        more.addEventListener('click', () => { box.hidden = !box.hidden; more.classList.toggle('is-open', !box.hidden); });
+        rows.push(more, box);
+      };
+      function frameRow(f) {
+        return h('div', {class: ['ib-frame-row', f.vendor && 'is-vendor']}, h('span', {class: 'ib-fn'}, '#' + f.n), f.file ? fileLink(f.file, f.line, root) : h('span', {class: 'muted'}, '[internal]'), f.call ? h('code', {class: 'ib-call', dir: 'ltr'}, f.call) : null);
+      }
+      for (const f of frames) { if (f.vendor) vendorRun.push(f); else { flush(); rows.push(frameRow(f)); } }
+      flush();
+      const raw = g.raw || '';
+      body.replaceChildren(
+        ex && e.message && ex.message !== e.message ? h('p', {class: 'ib-err-full', dir: 'auto'}, e.message) : null,
+        ex ? h('div', {class: 'row ib-err-ex'}, h('code', {dir: 'ltr'}, ex.class), ex.code && ex.code !== '0' ? chip('code ' + ex.code, {mono: true}) : null, fileLink(ex.file, ex.line, root)) : null,
+        rows.length ? h('div', {class: 'ib-stack'}, h('div', {class: 'ib-stack-title'}, icon('layers'), t('ib.err.stack')), rows) : null,
+        h('details', {class: 'ib-raw'}, h('summary', null, icon('log'), t('ib.err.raw'), raw ? copyButton(raw) : null), h('pre', {dir: 'ltr'}, raw)),
+        h('div', {class: 'row muted small'}, g.count > 1 ? t('ib.err.range', {first: g.firstTime || '-', last: g.lastTime || '-', n: g.count}) : (e.time || ''), h('span', {class: 'ltr'}, ' · ' + shortPath(e.file || '', root))));
+    };
+    const toggle = () => {
+      const open = body.hidden;
+      body.hidden = !open;
+      row.classList.toggle('is-open', open);
+      head.setAttribute('aria-expanded', String(open));
+      if (open) { IB.open.add(g.key); fill(); } else IB.open.delete(g.key);
+    };
+    head.addEventListener('click', (ev) => { if (ev.target.closest('a,button')) return; toggle(); });
+    head.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
+    if (isOpen) fill();
+    return row;
+  }
+
+  /** Toasts when something new arrives while another page is open. */
+  function inboxNotify(st) {
+    const ib = st.inbox;
+    if (!ib) return;
+    const m = ib.mail || {};
+    const d = ib.dumps || {};
+    const prev = S.ibPrev;
+    S.ibPrev = {mail: m.latest ? m.latest.id : null, dump: d.newest || 0, errors: ib.errors || 0};
+    if (!prev || S.page === 'inbox') return;
+    if (m.latest && m.latest.id !== prev.mail) {
+      toast('info', t('ib.toast.mail'), m.latest.subject || t('ib.noSubject'), {duration: 9000, actions: [{label: t('ib.open'), kind: 'primary', onClick: () => openInbox('mail', null, m.latest.id)}]});
+    }
+    if ((d.newest || 0) > prev.dump) {
+      toast('info', t('ib.toast.dump'), t('ib.toast.dumpText'), {duration: 9000, actions: [{label: t('ib.open'), kind: 'primary', onClick: () => openInbox('dumps')}]});
+    }
+    if ((ib.errors || 0) > prev.errors) {
+      const p = st.projects.find((x) => x.newErrors) || null;
+      toast('warn', t('ib.toast.error'), p ? p.name : null, {duration: 9000, actions: [{label: t('ib.open'), kind: 'primary', onClick: () => openInbox('errors', p ? p.id : '')}]});
+    }
+  }
+
+  /* ===================== Open from GitHub ===================== */
+  function repoNameOf(u) {
+    const m = /([A-Za-z0-9_.~-]+?)(?:\.git)?\/?$/.exec(String(u || '').trim().replace(/\/(tree|blob|-)\/.*$/, ''));
+    return m ? m[1].replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '') : '';
+  }
+  async function openClone() {
+    const info = await api('GET', '/api/clone/info');
+    if (!info.ok) return failToast(t('clone.loadFail'), info);
+    const url = h('input', {class: 'input mono', type: 'text', dir: 'ltr', placeholder: 'https://github.com/owner/repo', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('clone.url')});
+    const parent = h('input', {class: 'input mono', type: 'text', dir: 'ltr', value: info.parent || '', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('clone.parentL')});
+    const name = h('input', {class: 'input mono', type: 'text', dir: 'ltr', placeholder: 'my-project', autocomplete: 'off', spellcheck: 'false', 'aria-label': t('clone.nameL')});
+    let nameTouched = false;
+    name.addEventListener('input', () => { nameTouched = true; preview(); });
+    const dest = h('code', {class: 'ltr ib-dest'});
+    const preview = () => {
+      if (!nameTouched) name.value = repoNameOf(url.value);
+      dest.textContent = (parent.value.replace(/[\\/]+$/, '') || '…') + '\\' + (name.value || '…');
+    };
+    url.addEventListener('input', preview);
+    parent.addEventListener('input', preview);
+    const browse = btn(t('common.browse'), {size: 'sm', icon: 'folder', onClick: async () => {
+      const r = await api('POST', '/api/pick-folder', {});
+      if (r.ok && r.path) { parent.value = r.path; preview(); }
+    }});
+    preview();
+    const examples = h('div', {class: 'row clone-examples'}, h('span', {class: 'muted small'}, t('clone.try')),
+      ['laravel/laravel', 'filamentphp/demo', 'https://github.com/koel/koel'].map((x) => chip(x, {mono: true, onClick: () => { url.value = x; nameTouched = false; preview(); url.focus(); }})));
+    const m = openModal({
+      title: t('clone.title'), subtitle: t('clone.sub'), icon: 'branch', size: 'lg',
+      body: h('div', {class: 'stack'},
+        !info.git ? callout('warn', t('clone.noGitTitle'), t('clone.noGitText')) : null,
+        field(t('clone.url'), url, null, t('clone.urlHint')),
+        examples,
+        h('div', {class: 'clone-grid'},
+          field(t('clone.parentL'), h('div', {class: 'clone-parent'}, parent, browse)),
+          field(t('clone.nameL'), name)),
+        h('div', {class: 'row muted small'}, icon('folder'), t('clone.willBe'), dest),
+        h('ol', {class: 'team-steps clone-steps'},
+          [['download', 'clone.s1'], ['code', 'clone.s2'], ['package', 'clone.s3'], ['db', 'clone.s4'], ['play', 'clone.s5']].map((x) => h('li', null, icon(x[0]), t(x[1]))))),
+      actions: [
+        {label: t('common.cancel'), value: null},
+        {id: 'go', label: t('clone.go'), kind: 'primary', icon: 'download', disabled: !info.git, onClick: async (mm, b) => {
+          const body = {url: url.value.trim(), parent: parent.value.trim(), name: name.value.trim()};
+          const res = await modalBusy(mm, b, t('clone.starting'), () => api('POST', '/api/clone', body));
+          if (!res.ok || !res.jobId) return failToast(t('clone.fail'), res);
+          mm.close();
+          showJob(res.jobId, {
+            title: t('clone.jobTitle', {name: body.name}), icon: 'branch', closeOnDone: true,
+            progress: (job) => (job && job.status === 'running' && job.progress ? {pct: job.progress.done, text: job.progress.text || '', label: t('clone.cloningLabel')} : null),
+            onFinal: (job) => { if (job.status === 'done' && job.result && job.result.path) openTeamPlan(job.result.path, {implicit: true, autoStart: true}); }
+          });
+        }}
+      ]
+    });
+    setTimeout(() => url.focus(), 50);
+    return m;
   }
 
   /* ===================== DB Servers page ===================== */

@@ -2,7 +2,18 @@
 
 All notable changes to PHP Station are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [1.3.0] - 2026-11-12
+## [1.3.0] - 2026-11-13
+
+### Added (Inbox)
+- **Inbox page: Mail, Dumps, Errors.** A new sidebar page with unread counts, toasts when something new arrives, a project filter and file:line links that open in VS Code, Cursor, PhpStorm or Sublime (setting `editor`).
+- **Mail Catcher** (`lib/mailcatch.js`). A local SMTP server on `127.0.0.1:1025` (settings `mailCatcher`, `mailPort`) keeps every email of projects started by PHP Station: HTML in a sandboxed frame with desktop and mobile widths, text, headers, attachments, `.eml` download, Bcc from the SMTP envelope, and the sending project. Nothing is relayed. The newest 500 are kept in `<data>\mail`. A connection that speaks HTTP is closed.
+- **Dumps** (`lib/dumps.js`, `tools/dumpdecode.php`). `dump()` / `dd()` of web requests go to a dump server on `127.0.0.1:9912` (settings `catchDumps`, `dumpPort`) through Symfony's `VAR_DUMPER_FORMAT=server`, and are shown as collapsible trees with file:line and URL. They are decoded with the project's own PHP and only the `symfony/var-dumper` classes; `unserialize` may create only VarDumper's Data and Stub classes.
+- **Errors** (`lib/devlogs.js`). `storage/logs/*.log` and the PHP server log of each project are parsed: level, exception, file:line and stack frames, with your own code first and vendor frames folded. Repeats are grouped, and new errors are counted on the project card. The log files are read only; "Mark all seen" stores a byte position in the panel state.
+- **Dev tools prepend** (`lib/devtools.js`). One `auto_prepend_file` for project servers and the `php.bat` shim, so mail from `queue:work` is caught too. It acts only while the panel's heartbeat file (`<data>\devtools\live.json`) is fresh. It sets `MAIL_*` for the request (process env wins over `.env`) and SMTP / `smtp_port` for `mail()`. The `.env` file is never changed. The share prepend chains it.
+- **Open from GitHub** (`lib/gitclone.js`). Paste a GitHub / GitLab / Bitbucket / ssh link or `owner/repo`. PHP Station clones it with the installed Git, then runs the team-file plan even without a `phpstation.json` (database from `.env.example`; SQLite gets `database/database.sqlite`) and starts the project. Option-like, local and `ext::` links are refused, and an existing non-empty folder is never used.
+
+### Changed
+- README rewritten: a short pitch, a "why" table, quick start first, one section per feature with screenshots, an updated comparison, and new FAQ entries.
 
 ### Fixed
 - Live link: an error line of cloudflared (`https://api.trycloudflare.com/tunnel`) was taken as the link. The link now counts only after the tunnel has connected, and there are up to 3 attempts when Cloudflare is slow to answer.
