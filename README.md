@@ -41,6 +41,46 @@ The interface is available in **English, Roman Urdu and Urdu (RTL)**.
 
 ## Features
 
+### New in 1.3
+- **Shift from XAMPP / Laragon in one click.** PHP Station finds every project of your XAMPP, Laragon or WAMP: `htdocs` / `www` folders and Apache / nginx virtual hosts such as `shop.test`. Each project keeps the **same PHP and DB server it used before**. Nothing is copied or moved, and the databases stay in their old data folder.
+- **DB Time Machine.** A restore point of the project's database is saved **automatically before `php artisan migrate`, `migrate:fresh`, `db:seed`, `db:wipe` …** in the project terminal, or by hand. One click puts the database back. Before that, the current state is saved too, so an undo can itself be undone. The restore point is test-imported into a scratch database first, so the real database is never touched if anything is wrong.
+- **Live share link.** One button gives a running project a public `https://….trycloudflare.com` link, through a Cloudflare quick tunnel: no account, no hosting, no router settings. Send it to a client's phone. Laravel sees HTTPS correctly, and the link ends when you stop it, stop the project or close the panel.
+- **Fast server.** On Windows, `php -S` answers only one request at a time, so a page's CSS, JS and images waited behind it. PHP Station now serves static files itself and spreads PHP requests over 4 PHP workers per project (configurable in Settings). In our test, static files went from 2.4 s to under 10 ms while a page was loading. Your app runs unchanged.
+- **`phpstation.json` for teams.** Commit one small file, and every teammate gets the whole setup in one click: the right PHP and MariaDB versions (installed from official sources), extensions, DB server, `.env`, `composer install`, `APP_KEY`, the database, `migrate` and `storage:link`.
+
+```json
+{
+  "$schema": "https://sami-hussain-dev.github.io/PHP-Station/phpstation.schema.json",
+  "name": "Shop",
+  "php": "8.3",
+  "extensions": ["intl", "gd"],
+  "database": { "engine": "mariadb", "version": "11.4", "name": "shop_db" },
+  "setup": ["env", "composer-install", "key", "database", "migrate", "storage-link"]
+}
+```
+
+#### DB Time Machine: what it does
+
+![DB Time Machine, Every action: each INSERT / UPDATE / DELETE with its SQL and old / new values, and an Undo button for that one action](docs/screenshots/13-db-time-machine.png)
+
+**Every action.** Every INSERT, UPDATE and DELETE in the project's database is recorded: from the app, from phpMyAdmin, or from plain SQL. Each one is listed with its time, its SQL, and the old and new values with column names. **Undo this** reverses only that one action. A deleted row comes back, an update gets its old values again, and everything else stays as it is. The undo is itself recorded, so it can be undone too. If the same rows were changed again later, PHP Station warns you first.
+
+**Busy days stay readable.** Actions are grouped by hour, and a run of the same kind of action on one table becomes one line (`orders · INSERT × 250`) that opens on click. The counts at the top double as filters (All / DELETE / UPDATE / INSERT / TABLE), and you can search by `id=21` or by any value. The newest 100 come first, and older ones load on request.
+
+![DB Time Machine on a busy day: actions grouped by hour, repeated actions folded into one line, counts as filters](docs/screenshots/15-db-busy-day.png)
+
+How it works: MariaDB's own row-based binary log, switched on when PHP Station starts the server (MariaDB 10.2+). No `my.ini` is changed; the log lives in PHP Station's backup folder and expires after 7 days (configurable). A single action is reversed with `mariadb-binlog --flashback`. Table changes (CREATE / ALTER / DROP) are listed but are undone with a restore point.
+
+![DB Time Machine, Restore points: full copies of the database, one click back to any of them](docs/screenshots/14-db-restore-points.png)
+
+**Restore points (the whole database):**
+
+1. **It takes a "photo" of the database (a restore point).** It also takes a baseline the moment a project is added. This happens by itself right before `php artisan migrate`, `migrate:fresh`, `migrate:rollback`, `db:seed` or `db:wipe` runs in a PHP Station terminal, or whenever you press **Save a restore point now**.
+2. **If something goes wrong** (data wiped, a table dropped, a broken migration), press **Time Machine** on the project card, pick a moment and press **Go back here**.
+3. **The database becomes exactly as it was at that moment.** The current state is saved first, so the undo itself can be undone. The restore point is test-imported into a scratch database before the real one is touched.
+
+Restore points are `.sql` files in `devpanel-backups\points\<project>\`. The last 20 automatic points per project are kept (configurable in Settings); manual ones are never removed.
+
 ### Projects
 - **Add or scan folders.** PHP Station reads `composer.json`, `composer.lock`, `vendor` and `.env`, detects the Laravel version, and **suggests the right PHP** (★). A warning appears when the chosen PHP does not match the project.
 - **One toggle to run or stop a project.** Each project runs on its own port; the port is asked once before the first run and then remembered.
@@ -92,6 +132,8 @@ The interface is available in **English, Roman Urdu and Urdu (RTL)**.
 | **Runtimes**: everything found on this computer | **Safety settings**: guard, snapshots, dumps |
 | ![PHP Station in the light silver theme](docs/screenshots/10-projects-light.png) | ![PHP Station in Urdu, right-to-left](docs/screenshots/11-projects-urdu.png) |
 | **Light theme** | **Urdu (RTL)**, plus English and Roman Urdu |
+| ![DB Time Machine: every INSERT / UPDATE / DELETE with an Undo button](docs/screenshots/13-db-time-machine.png) | ![DB Time Machine: restore points of the whole database](docs/screenshots/14-db-restore-points.png) |
+| **DB Time Machine, Every action**: undo one INSERT / UPDATE / DELETE | **DB Time Machine, Restore points**: the whole database, one click back |
 
 ## Quick start
 
@@ -146,6 +188,10 @@ PHP Station does not replace your existing installs. It finds them and uses them
 | One-click DB repair from the error log | ✅ | ❌ | ❌ |
 | Official downloads with SHA-256 check | ✅ | – | – |
 | Uses existing XAMPP / Laragon installs | ✅ | – | – |
+| One-click move of all projects from XAMPP / Laragon | ✅ | – | – |
+| Undo a bad `migrate:fresh` (automatic DB restore points) | ✅ | ❌ | ❌ |
+| Public HTTPS link for a client, no account | ✅ Cloudflare quick tunnel | ❌ | ⚠️ ngrok, manual |
+| Team setup file (`phpstation.json`) | ✅ | ❌ | ❌ |
 | Size of the tool itself | ~1 MB of code, zero dependencies | ~150 MB+ | ~100 MB+ |
 
 <sub>Based on the default behaviour of XAMPP and Laragon at the time of writing. If something here is out of date, please open an issue.</sub>
@@ -174,6 +220,24 @@ That error usually comes from a DB server that was killed during Windows shutdow
 <summary><b>How do I repair a crashed MariaDB / MySQL database?</b></summary>
 
 Open **DB Servers → Repair** on the server's card. PHP Station reads the error log and names the problem. Then, after a full snapshot, it repairs the crashed Aria / MyISAM tables, rebuilds broken system tables from a clean template and checks every table. For InnoDB damage, use **Rescue data**: it works on a copy of the data folder, never on the original.
+</details>
+
+<details>
+<summary><b>I ran <code>php artisan migrate:fresh</code> by mistake. Can I get my data back?</b></summary>
+
+Yes, if you ran it in a terminal opened from PHP Station. Before every `migrate*` / `db:*` command, a restore point of the project's database is saved automatically. Press **Time Machine** on the project card and choose **Go back here**. Restore points can also be made by hand at any time.
+</details>
+
+<details>
+<summary><b>How do I show my local Laravel site to a client without hosting?</b></summary>
+
+Start the project and press **Live link** on its card. You get an `https://….trycloudflare.com` address that opens on any phone or computer. It uses Cloudflare's free quick tunnels (no account needed). The link stops when you press *Stop live link*, stop the project or close PHP Station.
+</details>
+
+<details>
+<summary><b>How do I move from XAMPP or Laragon to PHP Station?</b></summary>
+
+Click **Shift from XAMPP / Laragon** on the Projects page. Every project found in `htdocs` / `www` and in the virtual hosts is listed with the PHP and DB server it already used. Choose the ones you want and press **Shift selected**. Your XAMPP / Laragon folder is not changed, so you can still open it whenever you like.
 </details>
 
 <details>

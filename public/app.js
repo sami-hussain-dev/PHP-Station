@@ -231,7 +231,11 @@
     package: 'M12 2.8l8.2 4.6v9.2L12 21.2l-8.2-4.6V7.4z|M3.9 7.5L12 12l8.1-4.5|M12 12v9.1|M7.9 5.1l8.2 4.6',
     file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z|M14 3v5h5',
     'wand': 'M4 20L15 9|M13 7l4 4|M18 3v3|M16.5 4.5h3|M20 9v2|M19 10h2|M9 3v2|M8 4h2',
-    translate: 'M3.5 5.5h9|M8 3.5v2|M10.5 5.5c-.6 3.4-2.9 6.5-6.5 8.3|M5.8 9.2c1.2 2.2 3.3 3.9 5.9 4.6|M12.5 20.5l4.2-10 4.3 10|M14 17h5.5'
+    translate: 'M3.5 5.5h9|M8 3.5v2|M10.5 5.5c-.6 3.4-2.9 6.5-6.5 8.3|M5.8 9.2c1.2 2.2 3.3 3.9 5.9 4.6|M12.5 20.5l4.2-10 4.3 10|M14 17h5.5',
+    undo: 'M9 14L4 9l5-5|M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
+    share: 'c:18,5,2.6|c:6,12,2.6|c:18,19,2.6|M8.4 13.3l7.2 4.4|M15.6 6.3l-7.2 4.4',
+    'import': 'M3 12h11|M10 8l4 4-4 4|M14 4h4.5A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14',
+    users: 'c:9,8,3.5|M2.5 20a6.5 6.5 0 0 1 13 0|c:17.2,9,2.6|M16.4 14.1a5 5 0 0 1 5.1 5.4'
   };
   // Icons that point in the reading direction; they are mirrored in RTL (Urdu).
   const DIR_ICONS = new Set(['arrow', 'chevron-right']);
@@ -1888,6 +1892,8 @@
       h('div', {class: 'toolbar'},
         btn(t('proj.new'), {kind: 'primary', icon: 'plus', onClick: () => openAddProject()}),
         btn(t('proj.scan'), {icon: 'folder-search', onClick: () => openScanProjects()}),
+        btn(t('imp.btn'), {icon: 'import', title: t('imp.btnTitle'), onClick: () => openImport()}),
+        btn(t('team.btn'), {icon: 'users', title: t('team.btnTitle'), onClick: () => pickTeamFolder()}),
         h('span', {class: 'spacer'}),
         h('div', {class: 'search'}, icon('search'), search),
         seg),
@@ -1924,8 +1930,10 @@
         return emptyState({
           icon: 'grid', title: t('proj.emptyTitle'),
           text: t('proj.emptyText'),
-          actions: [btn(t('proj.new'), {kind: 'primary', icon: 'plus', onClick: () => openAddProject()}),
-            btn(t('proj.scan'), {icon: 'folder-search', onClick: () => openScanProjects()})]
+          actions: [btn(t('imp.btn'), {kind: 'primary', icon: 'import', onClick: () => openImport()}),
+            btn(t('proj.new'), {icon: 'plus', onClick: () => openAddProject()}),
+            btn(t('proj.scan'), {icon: 'folder-search', onClick: () => openScanProjects()}),
+            btn(t('team.btn'), {icon: 'users', onClick: () => pickTeamFolder()})]
         });
       }
       if (emptySig) {
@@ -2312,12 +2320,19 @@
       btn(t('proj.logs'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'log', fk: 'logs', onClick: () => openProjectLog(p)}),
       btn(t('proj.check'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'shield', fk: 'check', onClick: (ev) => runProjectJob(p, 'check', ev.currentTarget)}),
       btn(t('proj.lint'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'code', fk: 'lint', onClick: (ev) => runProjectJob(p, 'lint', ev.currentTarget)}),
+      h('span', {class: 'pc-foot-sep', 'aria-hidden': 'true'}),
+      btn(t('tm.btn') + (p.points && p.points.count ? ' · ' + Math.min(99, p.points.count) : ''), {kind: 'ghost', size: 'sm', icon: 'undo', fk: 'undo', disabled: !p.dbServerId,
+        className: 'tm-btn',
+        title: !p.dbServerId ? t('tm.needDb') : p.points && p.points.count ? tn('tm.btnTitleN', p.points.count) : t('tm.btnTitle'),
+        onClick: () => openTimeMachine(p)}),
+      btn(t('share.btn'), {kind: p.share ? 'primary' : 'ghost', size: 'sm', iconOnly: true, icon: 'share', fk: 'share',
+        title: p.share ? t('share.btnOn') : t('share.btnTitle'), onClick: () => openShare(p)}),
       h('span', {class: 'spacer'}),
       lastRun,
       menuButton(t('common.more'), 'more', () => moreItems(p), {fk: 'more'}));
 
-    return h('article', {class: ['card', 'project-card', running && 'is-running', busy && 'is-starting', wt.open && 'is-warn-open'], 'aria-label': t('proj.cardAria', {name: p.name})},
-      head, badges, fixBar, wt.panel, controls, strip, foot);
+    return h('article', {class: ['card', 'project-card', running && 'is-running', busy && 'is-starting', wt.open && 'is-warn-open', p.share && 'is-shared'], 'aria-label': t('proj.cardAria', {name: p.name})},
+      head, badges, fixBar, wt.panel, controls, strip, running ? shareStrip(p) : null, foot);
   }
 
   /* ----- actions ----- */
@@ -2562,6 +2577,11 @@
     const laravel = !!(p.info && p.info.isLaravel);
     return [
       {label: t('pma.projBtn'), icon: 'db', hint: 'phpMyAdmin', disabled: !p.dbServerId, title: p.dbServerId ? null : t('pma.noDbChosen'), onClick: () => openPma({projectId: p.id}, null)},
+      {label: t('tm.menu'), icon: 'undo', hint: p.points && p.points.count ? String(p.points.count) : null, disabled: !p.dbServerId, title: p.dbServerId ? null : t('tm.needDb'), onClick: () => openTimeMachine(p)},
+      p.share
+        ? {label: t('share.stop'), icon: 'stop', onClick: () => stopShare(p, null)}
+        : {label: t('share.menu'), icon: 'share', hint: 'trycloudflare.com', onClick: () => openShare(p)},
+      {label: t('team.menuExport'), icon: 'users', hint: 'phpstation.json', onClick: () => openTeamExport(p)},
       'sep',
       {label: t('common.rename'), icon: 'pencil', onClick: () => renameProject(p)},
       {label: t('port.change'), icon: 'hash', disabled: on, title: on ? t('proj.stopFirst') : null, onClick: () => editProjectPort(p)},
@@ -3069,6 +3089,8 @@
       if (!nameTouched) nameInput.value = info.name || baseName(path);
       const dupe = S.state.projects.find((x) => normPath(x.path) === normPath(path));
       factsBox.replaceChildren(
+        info.teamFile ? callout('ok', t('team.foundTitle'), t('team.foundText'),
+          [btn(t('team.foundBtn'), {kind: 'primary', size: 'sm', icon: 'bolt', onClick: () => { m.close(); openTeamPlan(path); }})]) : null,
         dupe ? callout('warn', t('np.dupeTitle'), t('np.dupeMsg', {name: dupe.name})) : null,
         factsView(info));
       fillPhpOptions(phpSel, arr(sugg.php), phpTouched ? phpSel.value : null);
@@ -3251,6 +3273,692 @@
         if (S.page !== 'projects') goPage('projects');
       }
     }
+  }
+
+  /* ===================== DB Time Machine (restore points + undo) ===================== */
+  function pointReasonChip(r) {
+    const kind = r === 'manual' ? 'accent' : r === 'artisan' ? 'info' : r === 'pre-undo' ? 'warn' : null;
+    return chip(hasT('tm.reason.' + r) ? t('tm.reason.' + r) : r, {kind});
+  }
+  async function openTimeMachine(p0, tab) {
+    const pointsPane = h('div', {class: 'stack'}, h('div', {class: 'row muted'}, spinner(), t('common.loading')));
+    const actionsPane = h('div', {class: 'stack'}, h('div', {class: 'row muted'}, spinner(), t('common.loading')));
+    const tabs = h('div', {class: 'seg tm-tabs', role: 'tablist'});
+    // explained once; afterwards it stays folded so the list gets the room (click to open again)
+    const seen = lsGet('devpanel.tmWhatSeen') === '1';
+    lsSet('devpanel.tmWhatSeen', '1');
+    const what = h('details', {class: 'tm-what', open: !seen},
+      h('summary', {class: 'tm-what-title'}, icon('info'), t('tm.whatTitle')),
+      h('ol', {class: 'tm-what-list'},
+        h('li', null, icon('list'), h('span', null, t('hist.what0'))),
+        h('li', null, icon('layers'), h('span', null, t('tm.what1'))),
+        h('li', null, icon('undo'), h('span', null, t('tm.what2'))),
+        h('li', null, icon('shield'), h('span', null, t('tm.what3')))));
+    const m = openModal({
+      title: t('tm.title', {name: p0.name}), subtitle: t('tm.sub'), icon: 'undo', size: 'xl',
+      body: h('div', {class: 'stack'}, what, tabs, actionsPane, pointsPane),
+      actions: [{label: t('common.close'), value: null}]
+    });
+    const show = (which) => {
+      actionsPane.hidden = which !== 'actions';
+      pointsPane.hidden = which !== 'points';
+      for (const b of tabs.children) b.setAttribute('aria-pressed', String(b.dataset.tab === which));
+    };
+    for (const x of [{id: 'actions', icon: 'list', label: t('hist.tab')}, {id: 'points', icon: 'layers', label: t('tm.tabPoints')}]) {
+      const b = h('button', {type: 'button', class: 'seg-btn', role: 'tab', dataset: {tab: x.id}}, icon(x.icon), x.label);
+      b.addEventListener('click', () => show(x.id));
+      tabs.appendChild(b);
+    }
+    show(tab === 'points' ? 'points' : 'actions');
+    loadActions(p0, actionsPane, m, () => show('points'), null);
+    const load = async () => {
+      const r = await api('GET', '/api/projects/' + enc(p0.id) + '/points');
+      if (m.closed) return;
+      if (!r.ok) { pointsPane.replaceChildren(callout('bad', t('tm.loadFail'), errorText(r))); return; }
+      const p = findProject(p0.id) || p0;
+      const points = arr(r.points);
+      const runJob = async (b, path, body, title, after) => {
+        if (b) setBusy(b, true);
+        const res = await api('POST', '/api/projects/' + enc(p.id) + path, body || {});
+        if (b) setBusy(b, false);
+        if (!res.ok || !res.jobId) return failToast(title, res);
+        showJob(res.jobId, {title, icon: 'undo', closeOnDone: !!after, onFinal: async (job) => { await refreshNow(); if (!m.closed) load(); if (after && job.status === 'done') after(job); }});
+      };
+      const makeNow = btn(t('tm.makeNow'), {kind: 'primary', icon: 'layers', disabled: !p.dbServerId,
+        onClick: (ev) => runJob(ev.currentTarget, '/restore-point', {reason: 'manual'}, t('tm.makeJob', {name: p.name}))});
+      const rows = points.length ? h('div', {class: 'check-list'}, points.map((x, i) => {
+        const meta = [
+          x.tables != null ? tn('tm.tables', x.tables) : null,
+          x.migrations != null ? tn('tm.migrations', x.migrations) : null,
+          x.sizeBytes != null ? fmtBytes(x.sizeBytes) : null
+        ].filter(Boolean).join(' · ');
+        return h('div', {class: 'check-item bk-row'},
+          h('span', {class: 'check-icon'}, icon(x.reason === 'pre-undo' ? 'undo' : 'layers')),
+          h('span', {class: 'check-main grow'},
+            h('span', {class: 'check-title row'}, fmtStamp(x.name), pointReasonChip(x.reason),
+              i === 0 ? chip(t('tm.newest'), {kind: 'ok'}) : null,
+              x.createdAt ? h('span', {class: 'muted small'}, agoText(x.createdAt)) : null),
+            h('span', {class: 'check-desc'},
+              x.command ? h('code', {class: 'ltr'}, x.command) : null, x.command ? ' · ' : null,
+              h('span', {class: 'ltr'}, (x.database || '?') + (meta ? ' · ' + meta : '')))),
+          btn(t('tm.undoHere'), {size: 'sm', icon: 'undo', disabled: !x.ok, onClick: async (ev) => {
+            const b = ev.currentTarget;
+            const yes = await confirmDialog({
+              title: t('tm.undoQ'), icon: 'undo', tone: 'warn', size: 'md',
+              message: t('tm.undoMsg', {db: x.database || '?', when: fmtStamp(x.name)}),
+              details: h('div', {class: 'stack'},
+                kvList([[t('common.database'), x.database, true], [t('tm.pointLabel'), x.name, true], x.command ? [t('tm.madeBefore'), x.command, true] : null]),
+                callout('ok', t('tm.safeTitle'), t('tm.safeText'))),
+              confirmLabel: t('tm.undoYes'), confirmIcon: 'undo'
+            });
+            if (yes) runJob(b, '/undo', {name: x.name, confirm: true}, t('tm.undoJob', {name: p.name}));
+          }}),
+          btn(t('tm.delete'), {size: 'sm', kind: 'ghost', iconOnly: true, icon: 'trash', onClick: async () => {
+            const yes = await confirmDialog({title: t('tm.deleteQ'), danger: true, icon: 'trash', message: t('tm.deleteMsg', {when: fmtStamp(x.name)}), confirmLabel: t('remove.yes')});
+            if (!yes) return;
+            const res = await api('POST', '/api/projects/' + enc(p.id) + '/points/delete', {name: x.name, confirm: true});
+            if (!res.ok) return failToast(t('tm.deleteFail'), res);
+            toast('success', t('tm.deleted'));
+            await refreshNow();
+            load();
+          }}));
+      })) : emptyState({small: true, icon: 'undo', title: t('tm.noneTitle'), text: t('tm.noneText')});
+      const set = r.settings || {};
+      pointsPane.replaceChildren(h('div', {class: 'stack'},
+        !p.dbServerId ? callout('warn', null, t('tm.needDb')) : null,
+        h('div', {class: 'row'}, makeNow, h('span', {class: 'spacer'}),
+          r.database ? chip(t('common.database') + ': ' + r.database, {mono: true, icon: 'db'}) : chip(t('tm.noEnvDb'), {kind: 'warn'})),
+        callout('info', t('tm.howTitle'), set.beforeArtisan === false ? t('tm.howOff') : t('tm.how', {keep: set.keep || 20})),
+        rows,
+        h('p', {class: 'muted small mono'}, r.root || '')));
+    };
+    load();
+  }
+
+  /* ----- every action (binlog timeline) ----- */
+  const OP_KIND = {INSERT: 'ok', UPDATE: 'info', DELETE: 'bad'};
+  function colName(r, c) { return (r.columns && r.columns[c.col]) || ('@' + c.col); }
+  function valText(c, full) {
+    if (c.isNull) return 'NULL';
+    if (c.value === '') return "''";
+    const v = String(c.value);
+    return !full && v.length > 60 ? v.slice(0, 57) + '…' : v;
+  }
+  /** One line per row change; an UPDATE shows only the columns that changed. */
+  function rowSummary(r, full) {
+    if (r.op === 'UPDATE') {
+      const changed = r.after.filter((c) => {
+        const b = r.before.find((x) => x.col === c.col);
+        return !b || b.value !== c.value || b.isNull !== c.isNull;
+      });
+      const key = r.before[0] ? colName(r, r.before[0]) + '=' + valText(r.before[0], full) : '';
+      return [key, ...changed.slice(0, full ? 40 : 4).map((c) => {
+        const b = r.before.find((x) => x.col === c.col);
+        return colName(r, c) + ': ' + (b ? valText(b, full) : '?') + ' → ' + valText(c, full);
+      })].filter(Boolean).join(' · ');
+    }
+    const side = r.op === 'INSERT' ? r.after : r.before;
+    const n = full ? 40 : 5;
+    return side.slice(0, n).map((c) => colName(r, c) + '=' + valText(c, full)).join(' · ') + (side.length > n ? ' · …' : '');
+  }
+  /** "CREATE TABLE `x` (…" -> "CREATE TABLE x" */
+  function ddlWhat(q) {
+    const m = /^\s*(CREATE|ALTER|DROP|RENAME|TRUNCATE)\s+(TABLE|VIEW|INDEX|DATABASE)?\s*(IF\s+(NOT\s+)?EXISTS\s+)?`?([^`\s(]+)/i.exec(String(q || ''));
+    return m ? (m[1] + (m[2] ? ' ' + m[2] : '') + ' ' + m[5]).toUpperCase().replace(/ ([^ ]+)$/, (x, n) => ' ' + n.toLowerCase()) : '';
+  }
+  /** Short line under an action: the columns an UPDATE changed, or the record an INSERT / DELETE touched. */
+  function colsSummary(a) {
+    const rows = arr(a.rows);
+    if (a.ddl) return [h('span', {class: 'muted small'}, t('hist.ddlShort'))];
+    const out = [];
+    const updated = new Set();
+    const keys = [];
+    for (const r of rows) {
+      if (r.op === 'UPDATE') {
+        for (const c of r.after) {
+          const b = r.before.find((x) => x.col === c.col);
+          if (!b || b.value !== c.value || b.isNull !== c.isNull) updated.add(colName(r, c));
+        }
+      }
+      const k = (r.op === 'INSERT' ? r.after : r.before)[0];
+      if (k && keys.length < 4) keys.push(colName(r, k) + '=' + valText(k));
+    }
+    if (keys.length) out.push(h('span', {class: 'hist-key ltr'}, keys.join(', ') + (a.rowCount > keys.length ? ' …' : '')));
+    if (updated.size) {
+      out.push(h('span', {class: 'muted small'}, t('hist.changedCols')));
+      for (const c of [...updated].slice(0, 8)) out.push(h('span', {class: 'hist-col ltr'}, c));
+      if (updated.size > 8) out.push(h('span', {class: 'muted small'}, '+' + (updated.size - 8)));
+    } else if (rows.length) {
+      out.push(h('span', {class: 'muted small'}, t(rows[0].op === 'DELETE' ? 'hist.wholeDeleted' : rows[0].op === 'INSERT' ? 'hist.wholeAdded' : 'hist.noChange')));
+    }
+    return out;
+  }
+  function rowLine(x, withTable, full) {
+    return h('span', {class: 'hist-rowline ltr'}, h('span', {class: 'hist-op op-' + x.op.toLowerCase()}, x.op), ' ', withTable ? x.table + ': ' : '', rowSummary(x, full));
+  }
+  /** One action, compact: time, op, table, which record / columns; a click shows the SQL and all values. */
+  function actionRow(a, onUndo) {
+    const ops = a.ddl ? [chip(t('hist.ddlChip'), {})] : arr(a.ops).map((o) => chip(o, {kind: OP_KIND[o]}));
+    const rows = arr(a.rows);
+    const undo = a.canUndo ? btn(t('hist.undoThis'), {size: 'sm', icon: 'undo', onClick: (ev) => { ev.stopPropagation(); onUndo(a, ev.currentTarget); }}) : null;
+    const details = h('span', {class: 'hist-details', hidden: true},
+      a.query ? h('span', {class: 'hist-det-label'}, t('hist.sqlLabel')) : null,
+      a.query ? h('pre', {class: 'hist-sql-full ltr'}, a.query) : null,
+      rows.length ? h('span', {class: 'hist-det-label'}, t('hist.valuesLabel')) : null,
+      rows.length ? h('span', {class: 'hist-rows'}, rows.map((x) => rowLine(x, true, true)),
+        a.rowCount > rows.length ? h('span', {class: 'muted small'}, tn('hist.moreRows', a.rowCount - rows.length)) : null) : null,
+      a.ddl ? h('span', {class: 'muted small'}, t('hist.ddlNote')) : null);
+    const toggle = h('button', {type: 'button', class: 'hist-toggle', 'aria-expanded': 'false', title: t('hist.showDetails')},
+      icon('chevron-right'), h('span', null, t('hist.details')));
+    const main = h('span', {class: 'check-main grow'},
+      h('span', {class: 'check-title row'}, h('span', {class: 'mono small'}, (a.time || '?').slice(11)), ...ops,
+        h('b', {class: 'ltr'}, arr(a.tables).join(', ') || (a.ddl ? ddlWhat(a.query) : '')),
+        a.rowCount > 1 ? h('span', {class: 'muted small'}, tn('hist.rows', a.rowCount)) : null,
+        a.isUndo ? chip(t('hist.undoChip'), {kind: 'warn', icon: 'undo'}) : null),
+      h('span', {class: 'hist-cols'}, ...colsSummary(a)),
+      toggle, details);
+    const row = h('div', {class: ['check-item', 'hist-row', a.isUndo && 'is-undo']},
+      h('span', {class: 'check-icon'}, icon(a.ddl ? 'db' : a.isUndo ? 'undo' : 'list')), main, undo);
+    const open = () => {
+      const on = details.hidden;
+      details.hidden = !on;
+      toggle.setAttribute('aria-expanded', String(on));
+      toggle.querySelector('span').textContent = on ? t('hist.hideDetails') : t('hist.details');
+      row.classList.toggle('is-open', on);
+    };
+    toggle.addEventListener('click', (ev) => { ev.stopPropagation(); open(); });
+    main.addEventListener('click', (ev) => { if (!ev.target.closest('pre, button, a') && !window.getSelection().toString()) open(); });
+    return row;
+  }
+  /** Consecutive actions of the same kind on the same table(s) -> runs [{key, items}] (newest first). */
+  function actionRuns(list) {
+    const out = [];
+    for (const a of list) {
+      const key = a.ddl || a.isUndo ? null : arr(a.ops).join('+') + '|' + arr(a.tables).join(',');
+      const last = out[out.length - 1];
+      if (key && last && last.key === key) last.items.push(a);
+      else out.push({key, items: [a]});
+    }
+    return out;
+  }
+  function dayLabel(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    const fmt = (x) => x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate());
+    const now = new Date();
+    if (d === fmt(now)) return t('hist.today');
+    if (d === fmt(new Date(now.getTime() - 86400000))) return t('hist.yesterday');
+    return d;
+  }
+  /** A run of 3+ similar actions as one line ("events · INSERT × 250, 14:01–14:05"); a click lists them. */
+  function runRow(run, onUndo) {
+    const a0 = run.items[0];
+    const last = run.items[run.items.length - 1];
+    const box = h('div', {class: 'check-list hist-runlist', hidden: true});
+    const toggle = h('button', {type: 'button', class: 'hist-toggle', 'aria-expanded': 'false'}, icon('chevron-right'), h('span', null, tn('hist.runShow', run.items.length)));
+    let built = false;
+    const open = () => {
+      if (!built) { built = true; box.replaceChildren(...run.items.map((x) => actionRow(x, onUndo))); }
+      const on = box.hidden;
+      box.hidden = !on;
+      toggle.setAttribute('aria-expanded', String(on));
+      toggle.querySelector('span').textContent = on ? t('hist.hideDetails') : tn('hist.runShow', run.items.length);
+    };
+    toggle.addEventListener('click', (ev) => { ev.stopPropagation(); open(); });
+    const rowsTotal = run.items.reduce((n, x) => n + (x.rowCount || 0), 0);
+    const main = h('span', {class: 'check-main grow'},
+      h('span', {class: 'check-title row'},
+        h('span', {class: 'mono small'}, (last.time || '').slice(11, 16) + '–' + (a0.time || '').slice(11, 16)),
+        ...arr(a0.ops).map((o) => chip(o + ' × ' + fmtInt(run.items.length), {kind: OP_KIND[o]})),
+        h('b', {class: 'ltr'}, arr(a0.tables).join(', ')),
+        rowsTotal > run.items.length ? h('span', {class: 'muted small'}, tn('hist.rows', rowsTotal)) : null),
+      h('span', {class: 'hist-cols'}, h('span', {class: 'muted small'}, t('hist.runNote'))),
+      toggle, box);
+    main.addEventListener('click', (ev) => { if (!ev.target.closest('.hist-runlist, button, pre, a')) open(); });
+    return h('div', {class: 'check-item hist-row hist-run'}, h('span', {class: 'check-icon'}, icon('layers')), main);
+  }
+  /** One hour of actions: header (time, count, per-op counts) + its rows; later hours start closed. */
+  function hourGroup(key, items, onUndo, startOpen) {
+    const counts = {};
+    for (const a of items) for (const o of (a.ddl ? ['DDL'] : arr(a.ops))) counts[o] = (counts[o] || 0) + 1;
+    const body = h('div', {class: 'check-list hist-list', hidden: !startOpen});
+    let built = false;
+    const build = () => {
+      if (built) return;
+      built = true;
+      body.replaceChildren(...actionRuns(items).map((r) => (r.key && r.items.length >= 3 ? runRow(r, onUndo) : r.items.map((x) => actionRow(x, onUndo)))).flat());
+    };
+    if (startOpen) build();
+    const head = h('button', {type: 'button', class: 'hist-hour', 'aria-expanded': String(!!startOpen)},
+      icon('chevron-right'),
+      h('b', null, dayLabel(key.slice(0, 10)) + '  ' + key.slice(11, 13) + ':00 – ' + key.slice(11, 13) + ':59'),
+      h('span', {class: 'muted small'}, tn('hist.actions', items.length)),
+      h('span', {class: 'spacer'}),
+      ...['DELETE', 'UPDATE', 'INSERT', 'DDL'].filter((o) => counts[o]).map((o) => chip((o === 'DDL' ? t('hist.ddlChip') : o) + ' ' + fmtInt(counts[o]), {kind: OP_KIND[o]})));
+    head.addEventListener('click', () => {
+      build();
+      body.hidden = !body.hidden;
+      head.setAttribute('aria-expanded', String(!body.hidden));
+    });
+    return h('section', {class: 'hist-group'}, head, body);
+  }
+  async function loadActions(p0, pane, m, gotoPoints, state) {
+    const st = Object.assign({table: null, op: null, q: '', limit: 100}, state || {});
+    pane.replaceChildren(h('div', {class: 'row muted'}, spinner(), t('hist.loading')));
+    const qs = '?limit=' + st.limit + (st.table ? '&table=' + enc(st.table) : '') + (st.op ? '&op=' + enc(st.op) : '') + (st.q ? '&q=' + enc(st.q) : '');
+    const r = await api('GET', '/api/projects/' + enc(p0.id) + '/history' + qs);
+    if (m.closed) return;
+    const p = findProject(p0.id) || p0;
+    const reload = (patch) => loadActions(p0, pane, m, gotoPoints, Object.assign({}, st, patch || {}));
+    if (!r.ok) {
+      pane.replaceChildren(callout('warn', t('hist.unavailable'), errorText(r), [btn(t('tm.tabPoints'), {size: 'sm', icon: 'layers', onClick: gotoPoints})]));
+      return;
+    }
+    if (r.busy) {
+      pane.replaceChildren(callout('warn', t('hist.busyTitle'), t('hist.busyText'), [btn(t('hist.refresh'), {size: 'sm', icon: 'refresh', onClick: () => reload()})]));
+      return;
+    }
+    if (!r.on) {
+      const can = r.reason !== 'UNSUPPORTED';
+      const enable = btn(t('hist.enableBtn'), {kind: 'primary', size: 'sm', icon: 'power', onClick: async (ev) => {
+        const b = ev.currentTarget;
+        const yes = await confirmDialog({
+          title: t('hist.enableQ'), icon: 'power', tone: 'warn', size: 'md',
+          message: t('hist.enableMsg', {label: (r.server && r.server.label) || '?'}),
+          details: callout('info', null, t('hist.enableNote')), confirmLabel: t('hist.enableYes'), confirmIcon: 'power'
+        });
+        if (!yes) return;
+        setBusy(b, true);
+        const res = await api('POST', '/api/projects/' + enc(p.id) + '/history/enable', {confirm: true});
+        setBusy(b, false);
+        if (!res.ok || !res.jobId) return failToast(t('hist.enableFail'), res);
+        showJob(res.jobId, {title: t('hist.enableQ'), icon: 'power', closeOnDone: true, onFinal: async () => { await refreshNow(); if (!m.closed) reload(); }});
+      }});
+      pane.replaceChildren(callout(can ? 'info' : 'warn', t('hist.offTitle'), t(can ? 'hist.offText' : 'hist.unsupportedText'), can ? [enable] : null));
+      return;
+    }
+    // ---- toolbar: what is in the window (counts double as filters), table, search, refresh
+    const stats = r.stats || {};
+    const opChip = (op, label, n) => {
+      const b = h('button', {type: 'button', class: ['seg-btn', 'hist-op-filter'], 'aria-pressed': String(st.op === op)},
+        label, h('span', {class: 'seg-count'}, fmtInt(n || 0)));
+      b.addEventListener('click', () => reload({op: st.op === op ? null : op, limit: 100}));
+      return b;
+    };
+    const ops = h('div', {class: 'seg hist-ops', role: 'group', 'aria-label': t('hist.opsAria')},
+      opChip(null, t('hist.all'), stats.total),
+      opChip('DELETE', 'DELETE', stats.DELETE), opChip('UPDATE', 'UPDATE', stats.UPDATE),
+      opChip('INSERT', 'INSERT', stats.INSERT), opChip('DDL', t('hist.ddlChip'), stats.DDL));
+    const filter = h('select', {class: 'select select-sm hist-filter', 'aria-label': t('hist.filterAria')},
+      h('option', {value: ''}, t('hist.allTables')), arr(r.tables).map((x) => h('option', {value: x}, x)));
+    filter.value = st.table || '';
+    filter.addEventListener('change', () => reload({table: filter.value || null, limit: 100}));
+    const search = h('input', {class: 'input input-sm hist-search', type: 'search', placeholder: t('hist.searchPh'), value: st.q || '', 'aria-label': t('hist.searchPh'), autocomplete: 'off', spellcheck: 'false'});
+    const go = debounce(() => reload({q: search.value.trim(), limit: 100}), 500);
+    search.addEventListener('input', go);
+    search.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { go.cancel(); reload({q: search.value.trim(), limit: 100}); } });
+    const head = h('div', {class: 'stack hist-toolbar'},
+      h('div', {class: 'row'},
+        chip(t('hist.liveOn'), {kind: 'ok', dot: 'dot-ok pulse'}),
+        chip(t('common.database') + ': ' + r.database, {mono: true, icon: 'db'}),
+        stats.from ? h('span', {class: 'muted small'}, t('hist.window', {from: stats.from.slice(5, 16), to: stats.to.slice(5, 16)})) : null,
+        h('span', {class: 'spacer'}),
+        btn(t('hist.refresh'), {size: 'sm', icon: 'refresh', onClick: () => reload()})),
+      h('div', {class: 'row'}, ops, h('span', {class: 'spacer'}), h('div', {class: 'search'}, icon('search'), search), filter));
+    const actions = arr(r.actions);
+    const filtered = !!(st.op || st.table || st.q);
+    if (!actions.length) {
+      pane.replaceChildren(head, emptyState({small: true, icon: filtered ? 'search' : 'list', title: t(filtered ? 'hist.noMatch' : 'hist.noneTitle'), text: t(filtered ? 'hist.noMatchText' : 'hist.noneText')}));
+      return;
+    }
+    const onUndo = (a, b) => undoAction(p, a, b, m, () => reload());
+    // ---- groups per hour (newest first); the first two hours are open
+    const groups = [];
+    for (const a of actions) {
+      const key = (a.time || '????-??-?? ??').slice(0, 13);
+      const g = groups[groups.length - 1];
+      if (g && g.key === key) g.items.push(a); else groups.push({key, items: [a]});
+    }
+    const list = h('div', {class: 'hist-groups'}, groups.map((g, i) => hourGroup(g.key, g.items, onUndo, i < 2)));
+    const more = r.more ? btn(t('hist.loadMore', {n: 100}), {icon: 'chevron-down', onClick: () => reload({limit: st.limit + 100})}) : null;
+    pane.replaceChildren(...[head,
+      h('p', {class: 'muted small'}, t('hist.showing', {n: fmtInt(actions.length), total: fmtInt(r.matchedCount || actions.length)})),
+      list, more].filter(Boolean));
+    if (st.q) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+  }
+  async function undoAction(p, a, b, m, reload) {
+    setBusy(b, true);
+    const chk = await api('POST', '/api/projects/' + enc(p.id) + '/history/check', {id: a.id});
+    setBusy(b, false);
+    if (!chk.ok) return failToast(t('hist.undoFail'), chk);
+    const conflicts = arr(chk.conflicts);
+    const yes = await confirmDialog({
+      title: t('hist.undoQ'), icon: 'undo', tone: conflicts.length ? 'bad' : 'warn', size: 'md',
+      message: arr(a.ops).map((o) => t('hist.effect.' + o)).join(' '),
+      details: h('div', {class: 'stack'},
+        h('div', {class: 'hist-rows'}, arr(a.rows).slice(0, 5).map((x) => rowLine(x, true))),
+        conflicts.length ? callout('bad', t('hist.conflictTitle'), h('ul', null, conflicts.slice(0, 6).map((c) => h('li', {class: 'ltr'}, c.time + ' · ' + c.op + ' ' + c.table + ' (' + c.key + ')')))) : null,
+        callout('ok', null, t('hist.undoSafe'))),
+      confirmLabel: t('hist.undoYes'), confirmIcon: 'undo'
+    });
+    if (!yes) return;
+    setBusy(b, true);
+    const res = await api('POST', '/api/projects/' + enc(p.id) + '/history/undo', {id: a.id, confirm: true});
+    setBusy(b, false);
+    if (!res.ok || !res.jobId) return failToast(t('hist.undoFail'), res);
+    showJob(res.jobId, {title: t('hist.undoQ'), icon: 'undo', closeOnDone: true, onFinal: async () => { await refreshNow(); if (!m.closed) reload(); }});
+  }
+
+  /* ===================== Live share link (Cloudflare quick tunnel) ===================== */
+  async function installCloudflared(after) {
+    const cat = await api('GET', '/api/installer/catalog?kind=cloudflared');
+    if (!cat.ok || !arr(cat.items).length) return failToast(t('share.catFail'), cat);
+    const it = cat.items[0];
+    const yes = await confirmDialog({
+      title: t('share.installQ'), icon: 'download', size: 'md',
+      message: t('share.installMsg', {version: it.version, size: it.sizeMB ? Math.round(it.sizeMB) + ' MB' : '?'}),
+      details: kvList([[t('in.source'), it.url, true], ['SHA-256', it.sha256 ? String(it.sha256).slice(0, 24) + '…' : '-', true]]),
+      confirmLabel: t('share.installYes'), confirmIcon: 'download'
+    });
+    if (!yes) return;
+    const r = await api('POST', '/api/installer/install', {kind: 'cloudflared', version: it.version, confirm: true});
+    if (!r.ok || !r.jobId) return failToast(t('share.installFail'), r);
+    showJob(r.jobId, {title: t('share.installJob'), icon: 'download', closeOnDone: true, progress: (job) => jobProgress(job, true),
+      onFinal: async (job) => { await refreshNow(); if (job.status === 'done' && after) after(); }});
+  }
+  function shareStrip(p) {
+    const sh = p.share;
+    if (!sh || !safeUrl(sh.url)) return null;
+    const link = h('a', {class: 'run-url share-url', href: sh.url, target: '_blank', rel: 'noopener noreferrer', title: t('share.openTitle')},
+      icon('globe'), h('span', {class: 'ltr'}, sh.url));
+    link.addEventListener('click', (ev) => {
+      if (ev.button !== 0 || ev.ctrlKey || ev.shiftKey || ev.metaKey || ev.altKey) return;
+      ev.preventDefault();
+      api('POST', '/api/open-share', {url: sh.url}).then((r) => { if (!r.ok) window.open(sh.url, '_blank', 'noopener'); });
+    });
+    return h('div', {class: 'run-strip share-strip'},
+      chip(t('share.live'), {kind: 'ok', dot: 'dot-ok pulse', cls: 'share-live'}),
+      link, copyButton(sh.url, t('share.copy')),
+      h('span', {class: 'run-meta', dataset: {since: sh.startedAt, tpl: 'proj.runningFor'}}, t('proj.runningFor', {d: sinceText(sh.startedAt)})),
+      btn(t('share.stop'), {size: 'sm', kind: 'soft-danger', icon: 'stop', onClick: (ev) => stopShare(p, ev.currentTarget)}));
+  }
+  async function stopShare(p, b) {
+    setBusy(b, true);
+    const r = await api('POST', '/api/projects/' + enc(p.id) + '/share/stop');
+    setBusy(b, false);
+    if (!r.ok) return failToast(t('share.stopFail'), r);
+    toast('success', t('share.stopped'), p.name);
+    await refreshNow();
+  }
+  async function openShare(p0) {
+    const p = findProject(p0.id) || p0;
+    if (p.share && p.share.url) return showShareResult(p, {url: p.share.url, warnings: []});
+    if (!(S.state.tools && S.state.tools.cloudflared)) {
+      const yes = await confirmDialog({
+        title: t('share.title'), icon: 'share', size: 'md', message: t('share.needTool'),
+        details: callout('info', null, t('share.toolWhy')), confirmLabel: t('share.installYes'), confirmIcon: 'download'
+      });
+      if (yes) installCloudflared(() => openShare(p));
+      return;
+    }
+    if (p.status !== 'running') {
+      const yes = await confirmDialog({title: t('share.title'), icon: 'share', size: 'sm', message: t('share.startFirst', {name: p.name}), confirmLabel: t('share.startAndShare'), confirmIcon: 'play'});
+      if (!yes) return;
+      await startProject(p);
+      const fresh = findProject(p.id);
+      if (!fresh || fresh.status !== 'running') return;
+      return openShare(fresh);
+    }
+    const yes = await confirmDialog({
+      title: t('share.q', {name: p.name}), icon: 'share', tone: 'warn', size: 'md', message: t('share.warnMsg'),
+      details: h('ul', {class: 'bullets'}, h('li', null, t('share.warn1')), h('li', null, t('share.warn2')), h('li', null, t('share.warn3'))),
+      confirmLabel: t('share.yes'), confirmIcon: 'share'
+    });
+    if (!yes) return;
+    const m = openModal({
+      title: t('share.title'), subtitle: p.name, icon: 'share', size: 'md', dismissible: false,
+      body: h('div', {class: 'stack'}, h('div', {class: 'row'}, spinner(), t('share.making')), h('p', {class: 'muted small'}, t('share.makingHint')))
+    });
+    S.pending[p.id] = 'starting';
+    renderAll();
+    const r = await api('POST', '/api/projects/' + enc(p.id) + '/share/start', {confirm: true});
+    delete S.pending[p.id];
+    await refreshNow();
+    m.close();
+    if (!r.ok) {
+      const tail = typeof r.logTail === 'string' ? r.logTail : '';
+      openModal({
+        title: t('share.fail'), subtitle: p.name, icon: 'alert-circle', tone: 'bad', size: 'lg',
+        body: [callout('bad', null, errorText(r)), tail ? h('pre', {class: 'term-mini', dir: 'ltr'}, tail) : null],
+        actions: [{label: t('common.ok'), kind: 'primary', value: null, autofocus: true}]
+      });
+      return;
+    }
+    showShareResult(findProject(p.id) || p, r);
+  }
+  function showShareResult(p, r) {
+    const url = safeUrl(r.url);
+    if (!url) return;
+    const warns = arr(r.warnings);
+    openModal({
+      title: t('share.ready'), subtitle: p.name, icon: 'share', tone: 'ok', size: 'md',
+      body: h('div', {class: 'stack'},
+        h('div', {class: 'share-big'}, h('code', {class: 'ltr break'}, url), copyButton(url, t('share.copy'))),
+        h('p', {class: 'muted'}, t('share.readyText')),
+        warns.includes('VITE_HOT') ? callout('warn', t('share.viteTitle'), t('share.viteText')) : null,
+        warns.includes('NO_HTTPS_FIX') ? callout('warn', null, t('share.noHttpsFix')) : null,
+        callout('info', null, t('share.endsWith'))),
+      actions: [
+        {label: t('share.stop'), kind: 'soft-danger', icon: 'stop', left: true, onClick: async (m, b) => { await stopShare(p, b); m.close(); }},
+        {label: t('share.copy'), icon: 'copy', onClick: async () => { if (await copyText(url)) toast('success', t('copy.done'), url); }},
+        {label: t('share.open'), kind: 'primary', icon: 'external', onClick: () => api('POST', '/api/open-share', {url}).then((x) => { if (!x.ok) window.open(url, '_blank', 'noopener'); })}
+      ]
+    });
+  }
+
+  /* ===================== Shift from XAMPP / Laragon / WAMP ===================== */
+  async function openImport() {
+    const body = h('div', {class: 'stack'}, h('div', {class: 'row muted'}, spinner(), t('imp.searching')));
+    const m = openModal({
+      title: t('imp.title'), subtitle: t('imp.sub'), icon: 'import', size: 'xl', body,
+      actions: [{label: t('common.close'), value: null}, {id: 'add', label: t('imp.shift'), kind: 'primary', icon: 'import', disabled: true, onClick: () => shiftSelected()}]
+    });
+    const r = await api('GET', '/api/import/plan');
+    if (m.closed) return;
+    if (!r.ok) { body.replaceChildren(callout('bad', t('imp.fail'), errorText(r))); return; }
+    const stacks = arr(r.stacks);
+    const withProjects = stacks.filter((s) => arr(s.projects).length);
+    if (!withProjects.length) {
+      body.replaceChildren(emptyState({
+        small: true, icon: 'import', title: stacks.length ? t('imp.noProjects') : t('imp.noStacks'),
+        text: t('imp.noneText'),
+        actions: [btn(t('scan.openSettings'), {icon: 'sliders', onClick: () => { m.close(); goPage('settings'); }})]
+      }));
+      return;
+    }
+    const addBtn = m.button('add');
+    const countLabel = h('span', {class: 'muted small', 'aria-live': 'polite'});
+    const msgArea = h('div');
+    const rows = [];
+    const updateCount = () => {
+      const n = rows.filter((x) => x.cb.checked && !x.cb.disabled).length;
+      countLabel.textContent = n ? tn('imp.chosen', n) : t('scan.noneChosen');
+      addBtn.disabled = n === 0;
+    };
+    const sections = withProjects.map((s) => {
+      const stackRows = arr(s.projects).map((it) => {
+        const added = !!it.alreadyAdded;
+        const cb = h('input', {type: 'checkbox', 'aria-label': t('scan.chooseAria', {name: it.name}), disabled: added, checked: !added});
+        const sel = h('select', {class: 'select select-sm', 'aria-label': 'PHP: ' + it.name});
+        fillPhpOptions(sel, it.php ? [{version: it.php.version, path: it.php.path, satisfies: true, hint: null}] : [], it.php ? it.php.path : null);
+        sel.disabled = added || !okPhp().length;
+        const dbSel = h('select', {class: 'select select-sm', 'aria-label': t('field.db') + ': ' + it.name});
+        fillDbOptions(dbSel, it.dbServerId);
+        dbSel.disabled = added;
+        const tr = h('tr', {class: added ? 'is-disabled' : null},
+          h('td', {class: 'shrink'}, cb),
+          h('td', null, h('div', {class: 'cell-strong'}, it.name), h('div', {class: 'cell-path'}, it.path)),
+          h('td', null, it.domains.length ? h('div', {class: 'row'}, it.domains.slice(0, 2).map((d) => chip(d, {mono: true, icon: 'globe'}))) : chip(it.from === 'vhost' ? 'vhost' : it.from, {})),
+          h('td', null, it.laravel ? chip('Laravel ' + it.laravel, {cls: 'chip-ver chip-laravel'}) : chip(t('proj.plainPhp'), {})),
+          h('td', null, sel, it.php && it.php.same ? h('div', {class: 'field-hint'}, t('imp.samePhp')) : null),
+          h('td', null, dbSel),
+          h('td', {class: 'shrink'}, added ? chip(t('scan.already'), {kind: 'ok', icon: 'check'}) : null));
+        cb.addEventListener('change', updateCount);
+        tr.addEventListener('click', (ev) => {
+          if (ev.target.closest('select, input, button, a, label')) return;
+          if (!cb.disabled) { cb.checked = !cb.checked; updateCount(); }
+        });
+        const row = {it, cb, sel, dbSel, tr, composerId: it.composerId || null};
+        rows.push(row);
+        return row;
+      });
+      const dbText = arr(s.db).map((d) => dbKindLabel(d.kind) + ' ' + (d.version || '') + ' :' + d.port).join(', ');
+      return h('section', {class: 'imp-stack'},
+        h('h3', {class: 'wiz-h'}, icon(s.kind === 'Laragon' ? 'layers' : 'server'), s.kind, h('span', {class: 'muted small mono'}, s.root)),
+        h('div', {class: 'row'},
+          s.php ? chip('PHP ' + s.php.version, {fam: famClass(s.php.version)}) : null,
+          dbText ? chip(dbText, {icon: 'db'}) : chip(t('imp.noDb'), {kind: 'warn'}),
+          chip(tn('imp.count', stackRows.length), {kind: 'info'})),
+        h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
+          h('thead', null, h('tr', null, h('th', {class: 'shrink'}, ''), h('th', null, t('common.folder')), h('th', null, t('imp.wasAt')), h('th', null, 'Laravel'),
+            h('th', null, 'PHP'), h('th', null, t('field.db')), h('th', null, ''))),
+          h('tbody', null, stackRows.map((x) => x.tr)))));
+    });
+    body.replaceChildren(
+      msgArea,
+      callout('ok', t('imp.safeTitle'), t('imp.safeText')),
+      h('div', {class: 'row'}, h('span', {class: 'spacer'}), countLabel),
+      ...sections);
+    updateCount();
+
+    async function shiftSelected() {
+      const chosen = rows.filter((x) => x.cb.checked && !x.cb.disabled);
+      if (!chosen.length) return;
+      const fails = [];
+      let okCount = 0;
+      let firstId = null;
+      await modalBusy(m, addBtn, t('imp.shifting'), async () => {
+        for (const x of chosen) {
+          const rt = okPhp().find((r2) => r2.path === x.sel.value);
+          if (!rt) { fails.push(t('scan.noPhp', {name: x.it.name})); continue; }
+          const res = await api('POST', '/api/projects', {
+            path: x.it.path, name: x.it.name, phpVersion: rt.version, phpPath: rt.path,
+            composerId: x.composerId || newestComposerId(), dbServerId: x.dbSel.value || null
+          });
+          if (res.ok) {
+            okCount++;
+            if (!firstId && res.project) firstId = res.project.id;
+            x.cb.checked = false; x.cb.disabled = true; x.sel.disabled = true; x.dbSel.disabled = true;
+            x.tr.classList.add('is-disabled');
+          } else fails.push(x.it.name + ': ' + errorText(res));
+        }
+      });
+      if (m.closed) return;
+      updateCount();
+      await refreshNow();
+      if (okCount) toast('success', tn('imp.done', okCount), t('imp.doneText'), {duration: 8000});
+      if (fails.length) msgArea.replaceChildren(callout('bad', t('scan.someFailed'), h('ul', null, fails.map((f) => h('li', null, f)))));
+      else {
+        m.close(true);
+        if (firstId) S.flash = firstId;
+        if (S.page !== 'projects') goPage('projects');
+      }
+    }
+  }
+
+  /* ===================== phpstation.json (team file) ===================== */
+  const TEAM_STEP_ICON = {env: 'file', 'composer-install': 'package', key: 'key', database: 'db', migrate: 'layers', seed: 'sparkle', 'storage-link': 'link'};
+  async function pickTeamFolder() {
+    const r = await api('POST', '/api/pick-folder', {});
+    if (!r.ok) return failToast(t('np.pickFail'), r);
+    if (r.path) openTeamPlan(r.path);
+  }
+  async function openTeamPlan(path) {
+    const m = openModal({
+      title: t('team.title'), subtitle: path, icon: 'users', size: 'lg',
+      body: h('div', {class: 'row muted'}, spinner(), t('team.reading')),
+      actions: [{label: t('common.close'), value: null}]
+    });
+    const r = await api('POST', '/api/teamfile/plan', {path});
+    if (m.closed) return;
+    if (!r.ok) { m.body.replaceChildren(callout('bad', t('team.readFail'), errorText(r))); return; }
+    const row = (iconName, title, state, text) => h('div', {class: 'check-item'},
+      h('span', {class: ['check-icon', 'is-' + state]}, icon(state === 'ok' ? 'check-circle' : state === 'install' ? 'download' : state === 'bad' ? 'alert-circle' : 'alert')),
+      h('span', {class: 'check-main grow'}, h('span', {class: 'check-title row'}, icon(iconName), title), text ? h('span', {class: 'check-desc'}, text) : null));
+    const items = [];
+    const php = r.php || {};
+    if (php.have) items.push(row('code', t('team.phpWant', {v: php.want}), 'ok', t('team.have', {what: 'PHP ' + php.have.version})));
+    else if (php.install) items.push(row('code', t('team.phpWant', {v: php.want}), 'install', t('team.willInstall', {what: 'PHP ' + php.install.version, size: php.install.sizeMB ? Math.round(php.install.sizeMB) + ' MB' : '?'})));
+    else items.push(row('code', 'PHP', 'warn', t('team.phpUnknown')));
+    for (const e of arr(r.extensions)) {
+      const st = e.state === 'ok' ? 'ok' : e.state === 'enable' || e.state === 'later' ? 'install' : 'warn';
+      items.push(row('package', 'ext-' + e.name, st, t('team.ext.' + e.state)));
+    }
+    if (r.db) {
+      const want = (r.db.want.engine === 'mysql' ? 'MySQL' : 'MariaDB') + (r.db.want.version ? ' ' + r.db.want.version : '');
+      if (r.db.install) items.push(row('db', want, 'install', t('team.willInstall', {what: 'MariaDB ' + r.db.install.version, size: r.db.install.sizeMB ? Math.round(r.db.install.sizeMB) + ' MB' : '?'}) + ' · ' + t('team.newServer')));
+      else if (r.db.have) items.push(row('db', want, 'ok', t('team.have', {what: r.db.have.label + ' :' + r.db.have.port})));
+      else items.push(row('db', want, 'warn', t('team.noDb')));
+      if (r.db.want.name) items.push(row('db', t('common.database') + ': ' + r.db.want.name, 'ok', t('team.dbName')));
+    }
+    const comp = r.composer || {};
+    if (comp.install) items.push(row('package', 'Composer', 'install', t('team.willInstall', {what: 'Composer ' + comp.install.version, size: '3 MB'})));
+    else if (comp.have) items.push(row('package', 'Composer', 'ok', t('team.have', {what: 'Composer ' + comp.have.version})));
+    const steps = arr(r.steps);
+    const notes = arr(r.notes).map((n) => callout(n.level === 'bad' ? 'bad' : 'warn', null, t(n.key, n.params || {})));
+    const errs = arr(r.errors);
+    const blocked = !php.have && !php.install;
+    const goBtnLabel = arr(r.installs).length ? t('team.goInstall', {n: arr(r.installs).length}) : t('team.go');
+    m.body.replaceChildren(h('div', {class: 'stack'},
+      h('div', {class: 'row'}, h('h3', {class: 'wiz-h'}, icon('users'), r.name), r.isLaravel ? chip('Laravel', {cls: 'chip-ver chip-laravel'}) : null,
+        r.alreadyAdded ? chip(t('scan.already'), {kind: 'ok', icon: 'check'}) : chip(t('team.newProject'), {kind: 'accent'})),
+      errs.length ? callout('warn', t('team.fileErrors'), errs.join(', ')) : null,
+      ...notes,
+      h('div', {class: 'check-list'}, items),
+      steps.length ? h('div', null, h('h4', {class: 'wiz-h'}, icon('list'), t('team.steps')),
+        h('ol', {class: 'team-steps'}, steps.map((s) => h('li', null, icon(TEAM_STEP_ICON[s] || 'dot'), t('team.stepL.' + s))))) : null,
+      callout('info', null, t('team.safe'))));
+    m.setActions([
+      {label: t('common.close'), value: null},
+      {id: 'go', label: goBtnLabel, kind: 'primary', icon: 'bolt', disabled: blocked, onClick: async (mm, b) => {
+        const res = await modalBusy(mm, b, t('team.starting'), () => api('POST', '/api/teamfile/apply', {path, confirm: true}));
+        if (!res.ok || !res.jobId) return failToast(t('team.applyFail'), res);
+        mm.close();
+        showJob(res.jobId, {
+          title: t('team.jobTitle', {name: r.name}), icon: 'users', progress: (job) => jobProgress(job, true),
+          onFinal: async (job) => {
+            await refreshNow();
+            if (job.status !== 'done' || !job.result) return;
+            S.flash = job.result.projectId;
+            if (S.page !== 'projects') goPage('projects');
+            const fresh = findProject(job.result.projectId);
+            if (fresh) toast('success', t('team.readyToast', {name: fresh.name}), null, {duration: 9000, actions: [{label: t('team.startNow'), onClick: () => startProject(findProject(fresh.id) || fresh)}]});
+          }
+        });
+      }}
+    ]);
+  }
+  async function openTeamExport(p) {
+    const r = await api('GET', '/api/projects/' + enc(p.id) + '/teamfile');
+    if (!r.ok) return failToast(t('team.readFail'), r);
+    const json = JSON.stringify(r.proposed || {}, null, 2);
+    openModal({
+      title: t('team.exportTitle'), subtitle: p.name, icon: 'users', size: 'lg',
+      body: h('div', {class: 'stack'},
+        h('p', null, t('team.exportText')),
+        r.exists ? callout('warn', t('team.existsTitle'), t('team.existsText')) : null,
+        h('div', {class: 'field'}, h('span', {class: 'field-label row'}, h('code', {class: 'ltr'}, 'phpstation.json'), copyButton(json)),
+          h('pre', {class: 'term-mini', dir: 'ltr'}, json)),
+        callout('info', null, t('team.commitHint'))),
+      actions: [
+        {label: t('common.cancel'), value: null},
+        {label: r.exists ? t('team.overwrite') : t('team.write'), kind: 'primary', icon: 'check', onClick: async (m, b) => {
+          const res = await modalBusy(m, b, t('common.saving'), () => api('POST', '/api/projects/' + enc(p.id) + '/teamfile', {overwrite: !!r.exists}));
+          if (!res.ok) return failToast(t('team.writeFail'), res);
+          m.close();
+          toast('success', t('team.written'), res.path + (res.backup ? '\n' + t('team.backupAt', {path: res.backup}) : ''), {duration: 8000});
+        }}
+      ]
+    });
   }
 
   /* ===================== DB Servers page ===================== */
@@ -4400,7 +5108,8 @@
     {kind: 'php', icon: 'code', title: 'PHP', host: 'windows.php.net'},
     {kind: 'mariadb', icon: 'db', title: 'MariaDB', host: 'downloads.mariadb.org'},
     {kind: 'composer', icon: 'package', title: 'Composer', host: 'getcomposer.org'},
-    {kind: 'phpmyadmin', icon: 'globe', title: 'phpMyAdmin', host: 'phpmyadmin.net'}
+    {kind: 'phpmyadmin', icon: 'globe', title: 'phpMyAdmin', host: 'phpmyadmin.net'},
+    {kind: 'cloudflared', icon: 'share', title: 'cloudflared', host: 'github.com/cloudflare'}
   ];
   const CATALOG_PREVIEW = 6;
   pageImpl.setup = {mount: mountSetup, update: updateSetupPage, unmount() { for (const k of Object.keys(INV)) delete INV[k]; }};
@@ -5117,7 +5826,7 @@
   }
   function settingsSig(s) {
     return JSON.stringify([s.panelPort, s.webPortRange, s.dbPortRange, s.projectRoots, s.runtimeRoots, s.extraPaths, s.dumpDir, s.dbBindLocal, s.autoStartDb, s.dbEnvOverride,
-      s.shutdownGuard, s.snapshotOnStart, s.snapshotKeep, s.snapshotMaxMB, s.dailyDump, s.dumpKeep]);
+      s.shutdownGuard, s.snapshotOnStart, s.snapshotKeep, s.snapshotMaxMB, s.dailyDump, s.dumpKeep, s.pointBeforeArtisan, s.pointKeep, s.phpWorkers, s.dbHistory, s.historyDays]);
   }
   function switchOf(el) {
     return el && (el.matches && el.matches('.switch') ? el : el.querySelector('.switch'));
@@ -5162,12 +5871,17 @@
     });
     SE.guard = makeSwitch({checked: true, label: t('st.guard'), fk: 'guard', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
     SE.dailyDump = makeSwitch({checked: true, label: t('st.dailyDump'), fk: 'ddump', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
+    SE.pointArtisan = makeSwitch({checked: true, label: t('st.pointArtisan'), fk: 'tmart', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
+    SE.pointKeep = h('input', {class: 'input mono', id: 'st-point-keep', type: 'number', min: 1, max: 200});
+    SE.phpWorkers = h('input', {class: 'input mono', id: 'st-php-workers', type: 'number', min: 1, max: 16});
+    SE.dbHistory = makeSwitch({checked: true, label: t('st.dbHistory'), fk: 'dbhist', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
+    SE.historyDays = h('input', {class: 'input mono', id: 'st-history-days', type: 'number', min: 1, max: 90});
     SE.snapOn = h('select', {class: 'select', id: 'st-snap-on'},
       ['daily', 'always', 'off'].map((x) => h('option', {value: x}, t('bk.on.' + x))));
     SE.snapKeep = h('input', {class: 'input mono', id: 'st-snap-keep', type: 'number', min: 1, max: 100});
     SE.dumpKeep = h('input', {class: 'input mono', id: 'st-dump-keep', type: 'number', min: 1, max: 100});
     SE.snapMax = h('input', {class: 'input mono', id: 'st-snap-max', type: 'number', min: 100, max: 1048576});
-    for (const el of [SE.snapOn, SE.snapKeep, SE.dumpKeep, SE.snapMax]) { el.addEventListener('input', markDirty); el.addEventListener('change', markDirty); }
+    for (const el of [SE.snapOn, SE.snapKeep, SE.dumpKeep, SE.snapMax, SE.pointKeep, SE.phpWorkers, SE.historyDays]) { el.addEventListener('input', markDirty); el.addEventListener('change', markDirty); }
     SE.guardStatus = h('div', {class: 'field-hint'}, t('common.loading'));
     api('GET', '/api/guard').then((g) => {
       if (!SE.guardStatus) return;
@@ -5201,6 +5915,7 @@
       h('div', {class: 'panel-body stack'}, ...content));
     const portsPanel = panel('hash', t('st.ports'), null,
       field(t('st.panelPort'), SE.panelPort, null, t('st.panelPortHint')),
+      field(t('st.phpWorkers'), SE.phpWorkers, null, t('st.phpWorkersHint')),
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.webPorts')), range(SE.webFrom, SE.webTo), h('div', {class: 'field-hint'}, t('st.webPortsHint'))),
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.dbPorts')), range(SE.dbFrom, SE.dbTo)));
     const dbAutoPanel = panel('db', t('st.dbAuto'), null,
@@ -5211,7 +5926,11 @@
       field(t('st.snapOn'), SE.snapOn, null, t('st.snapOnHint')),
       h('div', {class: 'range-row'}, field(t('st.snapKeep'), SE.snapKeep), field(t('st.snapMax'), SE.snapMax)),
       h('div', {class: 'field'}, h('div', {class: 'row'}, SE.dailyDump, h('span', null, t('st.dailyDumpText'))), h('div', {class: 'field-hint'}, t('st.dailyDumpHint'))),
-      field(t('st.dumpKeep'), SE.dumpKeep, null, t('st.backupWhere')));
+      field(t('st.dumpKeep'), SE.dumpKeep, null, t('st.backupWhere')),
+      h('div', {class: 'field'}, h('div', {class: 'row'}, SE.pointArtisan, h('span', null, t('st.pointArtisanText'))), h('div', {class: 'field-hint'}, t('st.pointArtisanHint'))),
+      field(t('st.pointKeep'), SE.pointKeep, null, t('st.pointKeepHint')),
+      h('div', {class: 'field'}, h('div', {class: 'row'}, SE.dbHistory, h('span', null, t('st.dbHistoryText'))), h('div', {class: 'field-hint'}, t('st.dbHistoryHint'))),
+      field(t('st.historyDays'), SE.historyDays, null, t('st.historyDaysHint')));
     const foldersPanel = panel('folder', t('st.folders'), null,
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.projectRootsLabel')), SE.projectRoots.el),
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.runtimeRootsLabel')), SE.runtimeRoots.el),
@@ -5274,6 +5993,11 @@
     SE.snapKeep.value = String(s.snapshotKeep || 7);
     SE.dumpKeep.value = String(s.dumpKeep || 7);
     SE.snapMax.value = String(s.snapshotMaxMB || 4096);
+    swSet(SE.pointArtisan, s.pointBeforeArtisan !== false);
+    SE.pointKeep.value = String(s.pointKeep || 20);
+    SE.phpWorkers.value = String(s.phpWorkers || 4);
+    swSet(SE.dbHistory, s.dbHistory !== false);
+    SE.historyDays.value = String(s.historyDays || 7);
     SE.loadedSig = settingsSig(s);
     SE.dirty = false;
     SE.err.textContent = '';
@@ -5291,7 +6015,8 @@
       bind: sw ? sw.getAttribute('aria-checked') : 'true',
       autoDb: swVal(SE.autoDb, true), envOverride: swVal(SE.envOverride, true),
       guard: swVal(SE.guard, true), dailyDump: swVal(SE.dailyDump, true),
-      snapOn: SE.snapOn.value, snapKeep: SE.snapKeep.value, dumpKeep: SE.dumpKeep.value, snapMax: SE.snapMax.value
+      snapOn: SE.snapOn.value, snapKeep: SE.snapKeep.value, dumpKeep: SE.dumpKeep.value, snapMax: SE.snapMax.value,
+      pointArtisan: swVal(SE.pointArtisan, true), pointKeep: SE.pointKeep.value, phpWorkers: SE.phpWorkers.value, dbHistory: swVal(SE.dbHistory, true), historyDays: SE.historyDays.value
     };
   }
   function restoreSettings(s) {
@@ -5306,6 +6031,7 @@
     swSet(SE.guard, s.guard !== false);
     swSet(SE.dailyDump, s.dailyDump !== false);
     SE.snapOn.value = s.snapOn || 'daily'; SE.snapKeep.value = s.snapKeep; SE.dumpKeep.value = s.dumpKeep; SE.snapMax.value = s.snapMax;
+    swSet(SE.pointArtisan, s.pointArtisan !== false); SE.pointKeep.value = s.pointKeep; SE.phpWorkers.value = s.phpWorkers; swSet(SE.dbHistory, s.dbHistory !== false); SE.historyDays.value = s.historyDays;
     SE.dirty = true;
     updateSaveBar();
   }
@@ -5348,7 +6074,8 @@
       dumpDir: dump, dbBindLocal: sw ? sw.getAttribute('aria-checked') === 'true' : true,
       autoStartDb: swVal(SE.autoDb, true), dbEnvOverride: swVal(SE.envOverride, true),
       shutdownGuard: swVal(SE.guard, true), dailyDump: swVal(SE.dailyDump, true), snapshotOnStart: SE.snapOn.value,
-      snapshotKeep: Number(SE.snapKeep.value), dumpKeep: Number(SE.dumpKeep.value), snapshotMaxMB: Number(SE.snapMax.value)
+      snapshotKeep: Number(SE.snapKeep.value), dumpKeep: Number(SE.dumpKeep.value), snapshotMaxMB: Number(SE.snapMax.value),
+      pointBeforeArtisan: swVal(SE.pointArtisan, true), pointKeep: Number(SE.pointKeep.value), phpWorkers: Number(SE.phpWorkers.value), dbHistory: swVal(SE.dbHistory, true), historyDays: Number(SE.historyDays.value)
     };
     setBusy(SE.saveBtn, true, t('common.saving'));
     const r = await api('POST', '/api/settings', body);

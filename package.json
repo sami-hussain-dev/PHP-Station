@@ -1,6 +1,6 @@
 {
   "name": "php-station",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "PHP Station: a free, zero-dependency local PHP development environment for Windows. Run many PHP / Laravel projects side by side, each with its own PHP version, Composer and MariaDB server. A modern XAMPP / Laragon alternative with a setup wizard, phpMyAdmin, crash-safe databases, automatic backups and one-click repair.",
   "private": true,
   "license": "MIT",
@@ -44,6 +44,6 @@
   "scripts": {
     "start": "node server.js --launch",
     "stop": "node server.js --stop",
-    "test": "node --test tests/unit.test.js tests/integration.test.js tests/installer.test.js tests/wizard.test.js tests/safety.test.js tests/db.integration.test.js tests/installer.net.test.js"
+    "test": "node --test tests/unit.test.js tests/features.test.js tests/integration.test.js tests/installer.test.js tests/wizard.test.js tests/safety.test.js tests/db.integration.test.js tests/installer.net.test.js"
   }
 }
