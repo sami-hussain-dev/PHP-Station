@@ -19,7 +19,7 @@ Free, open source, zero dependencies.
 
 [Quick start](#quick-start) · [Features](#features) · [Compared](#php-station-vs-xampp-vs-laragon) · [FAQ](#faq) · [Roman Urdu](#roman-urdu)
 
-<img src="docs/screenshots/01-projects.png" alt="PHP Station: five PHP and Laravel projects, each with its own PHP version, Composer and MariaDB server" width="100%">
+<img src="docs/assets/demo.gif" alt="PHP Station demo: projects switched on with different PHP versions at the same time, then Open from GitHub, the mail catcher, the dump() viewer, grouped laravel.log errors, the DB Time Machine, restore points, several MariaDB servers and one-click repair" width="100%">
 
 </div>
 
