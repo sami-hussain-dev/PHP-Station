@@ -9,7 +9,9 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$ToolDir = (Split-Path -Parent $PSScriptRoot)
+  # Empty = the folder above tools\. It is worked out below and not here: Windows PowerShell 5.1
+  # leaves $PSScriptRoot empty inside param() defaults when the script runs with -File.
+  [string]$ToolDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +20,16 @@ $ProgressPreference = 'SilentlyContinue'
 function Say([string]$roman, [string]$english) {
   Write-Host "  $roman"
   Write-Host "  ($english)"
+}
+
+if (-not $ToolDir) {
+  $here = $PSScriptRoot
+  if (-not $here -and $MyInvocation.MyCommand.Path) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
+  if (-not $here) {
+    Say 'PHP Station ka folder maloom nahi ho saka.' 'Could not work out the PHP Station folder.'
+    exit 1
+  }
+  $ToolDir = Split-Path -Parent $here
 }
 
 $runtimes = Join-Path $ToolDir 'runtimes'
@@ -96,4 +108,8 @@ catch {
 finally {
   if ($tmp -and (Test-Path -LiteralPath $tmp)) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
   if ($zip -and (Test-Path -LiteralPath $zip)) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
+  # Leave no empty helper folders behind.
+  foreach ($d in @((Join-Path $runtimes '_tmp'), (Join-Path $runtimes '_downloads'))) {
+    if ((Test-Path -LiteralPath $d) -and -not (Get-ChildItem -LiteralPath $d -Force)) { Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue }
+  }
 }
