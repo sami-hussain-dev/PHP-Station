@@ -175,6 +175,234 @@ describe('timemachine', () => {
   });
 });
 
+describe('timemachine quick checks', () => {
+  const TM = () => lib('timemachine.js');
+
+  it('isPlainMigrate: only `migrate` with output / safety flags can skip the restore point', () => {
+    assert.equal(TM().isPlainMigrate('migrate', []), true);
+    assert.equal(TM().isPlainMigrate('MIGRATE', ['--force', '-n', '--step']), true);
+    for (const [c, a] of [['migrate', ['--seed']], ['migrate', ['--path=x']], ['migrate', ['--database=other']], ['migrate:fresh', []], ['db:seed', []], ['migrate', ['--pretend', 'x']]]) {
+      assert.equal(TM().isPlainMigrate(c, a), false, `${c} ${a.join(' ')}`);
+    }
+  });
+
+  it('migrationName drops every ".php" like Laravel', () => {
+    assert.equal(TM().migrationName('2014_10_12_000000_create_users_table.php'), '2014_10_12_000000_create_users_table');
+    assert.equal(TM().migrationName(path.join('app', 'database', 'migrations', '2025_10_09_x_table.php.php')), '2025_10_09_x_table');
+  });
+
+  it('pendingMigrations compares files with the migrations that ran (null when it cannot tell)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-mig-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'database', 'migrations'), { recursive: true });
+      for (const n of ['2020_01_01_000000_a.php', '2020_01_02_000000_b.php.php']) fs.writeFileSync(path.join(dir, 'database', 'migrations', n), '<?php');
+      fs.writeFileSync(path.join(dir, 'database', 'migrations', 'README.md'), '');
+      assert.equal(TM().pendingMigrations(dir, new Set(['2020_01_01_000000_a', '2020_01_02_000000_b'])), 0);
+      assert.equal(TM().pendingMigrations(dir, new Set(['2020_01_01_000000_a'])), 1);
+      assert.equal(TM().pendingMigrations(dir, null), null, 'no migrations table');
+      // a package whose service provider loads its own migrations
+      const pkg = path.join(dir, 'vendor', 'acme', 'tools');
+      fs.mkdirSync(path.join(pkg, 'src'), { recursive: true });
+      fs.mkdirSync(path.join(pkg, 'database', 'migrations'), { recursive: true });
+      fs.writeFileSync(path.join(pkg, 'src', 'ToolsServiceProvider.php'), '<?php $this->loadMigrationsFrom(__DIR__."/../database/migrations");');
+      fs.writeFileSync(path.join(pkg, 'database', 'migrations', '2021_01_01_000000_c.php'), '<?php');
+      fs.mkdirSync(path.join(dir, 'vendor', 'composer'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'vendor', 'composer', 'installed.json'), JSON.stringify({ packages: [{
+        name: 'acme/tools', autoload: { 'psr-4': { 'Acme\\Tools\\': 'src/' } }, extra: { laravel: { providers: ['Acme\\Tools\\ToolsServiceProvider'] } },
+      }] }));
+      assert.equal(TM().pendingMigrations(dir, new Set(['2020_01_01_000000_a', '2020_01_02_000000_b'])), 1, 'package migration pending');
+      // modules that load migrations from elsewhere: can't tell
+      fs.mkdirSync(path.join(dir, 'Modules'));
+      assert.equal(TM().pendingMigrations(dir, new Set(['2020_01_01_000000_a', '2020_01_02_000000_b', '2021_01_01_000000_c'])), null);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('fingerprintOf: the same write counters give the same signature, any write changes it', () => {
+    const base = [['COM_INSERT', '5'], ['COM_ALTER_TABLE', '2'], ['INNODB_ROWS_UPDATED', '9'], ['UPTIME', '100']];
+    const a = TM().fingerprintOf(base, 1000000);
+    const b = TM().fingerprintOf(base.map(([k, v]) => [k.toLowerCase(), k === 'UPTIME' ? '160' : v]), 1060000);
+    assert.equal(a.sig, b.sig);
+    assert.equal(a.boot, b.boot);
+    assert.notEqual(TM().fingerprintOf([['COM_INSERT', '6'], ['COM_ALTER_TABLE', '2'], ['INNODB_ROWS_UPDATED', '9'], ['UPTIME', '100']], 1000000).sig, a.sig);
+    assert.equal(TM().fingerprintOf([['UPTIME', '1']]), null, 'no counters, no reuse');
+  });
+});
+
+describe('dbimport (Import database)', () => {
+  const DI = () => lib('dbimport.js');
+
+  it('parseClientError reads the code, the line and the message', () => {
+    assert.deepEqual(DI().parseClientError("mysql: [Warning] x\nERROR 1273 (HY000) at line 25: Unknown collation: 'utf8mb4_0900_ai_ci'\n"),
+      { code: 1273, line: 25, message: "Unknown collation: 'utf8mb4_0900_ai_ci'" });
+    assert.deepEqual(DI().parseClientError('ERROR 2006 (HY000) at line 9: MySQL server has gone away'), { code: 2006, line: 9, message: 'MySQL server has gone away' });
+    assert.equal(DI().parseClientError('all good'), null);
+  });
+
+  it('fixesFor maps server errors to one-click fixes, without the ones already on', () => {
+    assert.deepEqual(DI().fixesFor({ code: 1273, message: 'Unknown collation' }), ['collation']);
+    assert.deepEqual(DI().fixesFor({ code: 1193, message: "Unknown system variable 'GTID_PURGED'" }), ['gtid']);
+    assert.deepEqual(DI().fixesFor({ code: 1067, message: "Invalid default value for 'x'" }), ['sqlmode']);
+    assert.deepEqual(DI().fixesFor({ code: 1050, message: 'Table exists' }, ['replace']), []);
+    assert.deepEqual(DI().fixesFor({ code: 1366, message: 'Incorrect string value' }, [], { invalidUtf8: true }), ['latin1']);
+    assert.deepEqual(DI().fixesFor({ code: 1064, message: "near 'ENCRYPTION='N''" }), ['mysql8']);
+    assert.deepEqual(DI().fixesFor({ code: 1227, message: 'need SUPER for SET @@GLOBAL.GTID_PURGED' }), ['gtid']);
+    assert.deepEqual(DI().fixesFor({ code: 9999, message: '?' }), []);
+  });
+
+  it('nearestCollation picks what the server has', () => {
+    const maria = new Set(['utf8mb4_unicode_ci', 'utf8mb4_general_ci', 'utf8mb4_bin', 'utf8_unicode_ci', 'utf8_bin', 'latin1_swedish_ci', 'latin1_general_ci']);
+    assert.equal(DI().nearestCollation('utf8mb4_0900_ai_ci', maria), 'utf8mb4_unicode_ci');
+    assert.equal(DI().nearestCollation('utf8mb4_0900_bin', maria), 'utf8mb4_bin');
+    assert.equal(DI().nearestCollation('utf8mb3_general_ci', maria), 'utf8_unicode_ci');
+    assert.equal(DI().nearestCollation('latin1_german2_ci', maria), 'latin1_general_ci');
+  });
+
+  it('the line fixer drops and rewrites only what its fixes cover', () => {
+    const fix = DI().makeLineFixer(['stripdb', 'gtid', 'definer', 'mysql8', 'collation', 'charset', 'sqlmode'],
+      { collations: { utf8mb4_0900_ai_ci: 'utf8mb4_unicode_ci' } });
+    assert.equal(fix('USE `shop`;\n'), null);
+    assert.equal(fix('/*!40000 DROP DATABASE IF EXISTS `shop`*/;\n'), null);
+    assert.equal(fix("SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-5,\n"), null);
+    assert.equal(fix("b:1-9';\n"), null, 'the rest of a multi-line GTID statement');
+    assert.equal(fix('CREATE TABLE t (a int);\n'), 'CREATE TABLE t (a int);\n');
+    assert.equal(fix('/*!50013 DEFINER=`admin`@`%` SQL SECURITY DEFINER */\n'), '/*!50013 SQL SECURITY DEFINER */\n');
+    assert.equal(fix(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci /*!80016 DEFAULT ENCRYPTION='N' */;\n"),
+      ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ;\n');
+    assert.equal(fix('`a` varchar(5) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin\n'), '`a` varchar(5) CHARACTER SET utf8 COLLATE utf8_bin\n');
+    assert.equal(fix("/*!50003 SET sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION' */ ;\n"),
+      "/*!50003 SET sql_mode = 'ONLY_FULL_GROUP_BY,NO_ENGINE_SUBSTITUTION' */ ;\n");
+    const none = DI().makeLineFixer([]);
+    assert.equal(none('USE `shop`;\n'), 'USE `shop`;\n');
+  });
+
+  it('originalLine undoes the prelude and the dropped lines', () => {
+    assert.equal(DI().originalLine(10, 4, []), 6);
+    assert.equal(DI().originalLine(10, 4, [2, 3]), 8);
+    assert.equal(DI().originalLine(10, 4, [2, 3, 50]), 8);
+    assert.equal(DI().originalLine(3, 4, []), null, 'inside the prelude');
+  });
+
+  it('encodingOf spots UTF-16 with and without a BOM', () => {
+    assert.equal(DI().encodingOf(Buffer.from([0xff, 0xfe, 0x2d, 0x00])), 'utf16le');
+    assert.equal(DI().encodingOf(Buffer.from('-- MySQL dump', 'utf16le')), 'utf16le');
+    assert.equal(DI().encodingOf(Buffer.from('-- MySQL dump 10.13 with plenty of plain text', 'utf8')), 'utf8');
+  });
+});
+
+describe('htaccess (Apache rules without Apache)', () => {
+  const HT = () => lib('htaccess.js');
+  // a fake docroot: url-style paths -> 'file' | 'dir'; .htaccess texts by folder
+  const site = (files, conf) => {
+    const root = path.join(os.tmpdir(), 'ps-ht-site');
+    const norm = (p) => path.relative(root, p).split(path.sep).join('/');
+    return {
+      root,
+      io: {
+        kind: (p) => { const r = norm(p); if (r === '') return 'dir'; return files[r] || null; },
+        read: (p) => { const r = norm(p); return r.endsWith('.htaccess') ? (conf[r.slice(0, -'.htaccess'.length)] ?? null) : null; },
+      },
+    };
+  };
+  const ev = (s, url, method = 'GET') => HT().evaluate(s.root, { method, url, headers: { host: 'localhost:8000' } }, s.io, new Map());
+  const front = 'RewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule ^(.*)$ index.php?url=$1 [QSA,L]\n';
+
+  it('front controller: unknown paths go to index.php, real files are served as they are', () => {
+    const s = site({ 'index.php': 'file', 'css': 'dir', 'css/app.css': 'file' }, { '': front });
+    assert.deepEqual(ev(s, '/blog/post-1?x=2'), { action: 'serve', path: '/index.php', query: 'url=blog/post-1&x=2', headers: [], rewritten: true });
+    assert.equal(ev(s, '/css/app.css').action, 'pass');
+    assert.equal(ev(s, '/index.php').action, 'pass');
+  });
+
+  it('WordPress rules', () => {
+    const wp = '<IfModule mod_rewrite.c>\nRewriteEngine On\nRewriteBase /\nRewriteRule ^index\\.php$ - [L]\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule . /index.php [L]\n</IfModule>\n';
+    const s = site({ 'index.php': 'file', 'wp-admin': 'dir', 'wp-admin/index.php': 'file' }, { '': wp });
+    const r = ev(s, '/2026/11/hello-world/');
+    assert.equal(r.action, 'serve');
+    assert.equal(r.path, '/index.php');
+    assert.equal(ev(s, '/wp-admin/').path, '/wp-admin/index.php');
+    assert.equal(ev(s, '/wp-admin').action, 'redirect', 'folder without slash');
+  });
+
+  it('back-references, [R=301], [F], [G], Redirect and RedirectMatch', () => {
+    const conf = 'RewriteEngine On\nRewriteRule ^product/([0-9]+)$ product.php?id=$1 [L]\nRewriteRule ^old$ /new [R=301,L]\nRewriteRule ^secret - [F]\nRewriteRule ^gone$ - [G]\n'
+      + 'Redirect 302 /moved /product/7\nRedirectMatch 301 ^/blog/(.*)$ /news/$1\n';
+    const s = site({ 'product.php': 'file' }, { '': conf });
+    assert.deepEqual(ev(s, '/product/42'), { action: 'serve', path: '/product.php', query: 'id=42', headers: [], rewritten: true });
+    assert.deepEqual(ev(s, '/old?a=1'), { action: 'redirect', status: 301, location: '/new?a=1', headers: [] });
+    assert.equal(ev(s, '/secret/x').status, 403);
+    assert.equal(ev(s, '/gone').status, 410);
+    assert.equal(ev(s, '/moved/x').location, '/product/7/x');
+    assert.equal(ev(s, '/blog/a-b').location, '/news/a-b');
+  });
+
+  it('access rules: deny a folder, <FilesMatch>, .ht* never served, ErrorDocument', () => {
+    const s = site({ 'private': 'dir', 'private/a.txt': 'file', '.env': 'file', 'x.ini': 'file', 'ok.txt': 'file', '404.php': 'file' },
+      { '': '<FilesMatch "^\\.env|\\.ini$">\n  Require all denied\n</FilesMatch>\nErrorDocument 403 /404.php\n', 'private/': 'Deny from all\n' });
+    const d = ev(s, '/private/a.txt');
+    assert.equal(d.status, 403);
+    assert.equal(d.errorDoc, '/404.php');
+    assert.equal(ev(s, '/.env').status, 403);
+    assert.equal(ev(s, '/x.ini').status, 403);
+    assert.equal(ev(s, '/.htaccess').status, 403);
+    assert.equal(ev(s, '/ok.txt').action, 'pass');
+    assert.equal(ev(s, '/missing.txt').status, 404);
+  });
+
+  it('a sub-folder .htaccess with its own rules, DirectoryIndex, a growing [QSA] query does not loop', () => {
+    const s = site({ 'shop': 'dir', 'shop/index.php': 'file', 'blog': 'dir', 'blog/home.php': 'file' },
+      { 'shop/': 'RewriteEngine On\nRewriteRule ^(.*)$ index.php?p=$1 [QSA,L]\n', 'blog/': 'DirectoryIndex home.php\n' });
+    const r = ev(s, '/shop/cart/9');
+    assert.equal(r.action, 'serve');
+    assert.equal(r.path, '/shop/index.php');
+    assert.equal(ev(s, '/blog/').path, '/blog/home.php');
+  });
+
+  it('PATH_INFO: /index.php/extra counts index.php as the file', () => {
+    const s = site({ 'index.php': 'file' }, { '': front });
+    assert.equal(ev(s, '/index.php/extra/path').action, 'pass');
+  });
+
+  it('analyze lists the lines that do nothing here; harmless ones are not listed', () => {
+    const a = HT().analyze('Options -Indexes\nphp_value upload_max_filesize 64M\nRewriteEngine On\nRewriteRule ^a$ b.php [L]\nSetEnv APP_ENV dev\n<Limit GET>\nRequire all denied\n</Limit>\nHeader set X-A "1"\n');
+    assert.equal(a.rewrite, 1);
+    assert.equal(a.headers, 1);
+    assert.deepEqual(a.unsupported.map((u) => u.line), [2, 5, 6]);
+  });
+
+  it('splitArgs keeps quoted arguments together', () => {
+    assert.deepEqual(HT().splitArgs('Header set X-Frame-Options "SAMEORIGIN, x"'), ['Header', 'set', 'X-Frame-Options', 'SAMEORIGIN, x']);
+    assert.deepEqual(HT().splitArgs("ErrorDocument 404 '/not found.php'"), ['ErrorDocument', '404', '/not found.php']);
+  });
+});
+
+describe('doctor', () => {
+  const D = () => lib('doctor.js');
+
+  it('setMyIni changes only the [mysqld] section and keeps line endings', () => {
+    const src = '[client]\r\nport=3306\r\n[mysqld]\r\nport=3306\r\nmax_allowed_packet=1M\r\n#innodb_buffer_pool_size=8M\r\n[mysqldump]\r\nmax_allowed_packet=16M\r\n';
+    const out = D().setMyIni(src, { innodb_buffer_pool_size: '512M', max_allowed_packet: '256M' });
+    assert.equal(out, '[client]\r\nport=3306\r\n[mysqld]\r\ninnodb_buffer_pool_size = 512M\r\nport=3306\r\nmax_allowed_packet = 256M\r\n#innodb_buffer_pool_size=8M\r\n[mysqldump]\r\nmax_allowed_packet=16M\r\n');
+    assert.match(D().setMyIni('[client]\nport=1\n', { max_allowed_packet: '64M' }), /\[mysqld\]\nmax_allowed_packet = 64M$/);
+  });
+
+  it('tunedPool: 1/8 of the RAM, 256 MB to 1 GB, in 128 MB steps', () => {
+    const MB = 1024 * 1024;
+    assert.equal(D().tunedPool(2048 * MB), 256 * MB);
+    assert.equal(D().tunedPool(6 * 1024 * MB), 768 * MB);
+    assert.equal(D().tunedPool(64 * 1024 * MB), 1024 * MB);
+  });
+
+  it('mask hides the user, the PC and private folders', () => {
+    const out = D().mask('C:\\Users\\sami\\x on PC-7 by sami, D:\\work\\shop\\a.php', { home: 'C:\\Users\\sami', user: 'sami', pc: 'PC-7', paths: ['D:\\work\\shop'] });
+    assert.equal(out, '%USERPROFILE%\\x on <pc> by <user>, <path>\\a.php');
+  });
+
+  it('size reads as MB or GB', () => {
+    assert.equal(D().size(300 * 1024 * 1024), '300 MB');
+    assert.equal(D().size(5 * 1024 * 1024 * 1024), '5.0 GB');
+  });
+});
+
 describe('projects.buildPhpBat (DB Time Machine hook)', () => {
   const P = () => lib('projects.js');
   const php = { path: 'C:\\php\\8.3\\php.exe', iniRelocated: false };
@@ -191,7 +419,7 @@ describe('projects.buildPhpBat (DB Time Machine hook)', () => {
     assert.ok(lines.includes('if /i not "%~1"=="artisan" goto ps_run'));
     assert.ok(lines.includes('if /i "%PS_ARTISAN:~0,7%"=="migrate" goto ps_point'));
     assert.ok(lines.includes('if /i "%PS_ARTISAN:~0,3%"=="db:" goto ps_point'));
-    assert.ok(lines.includes('"C:\\node\\node.exe" "D:\\tools\\ps\\tools\\restore-point.js" "D:\\tools\\ps\\data" "shop-a1b2" "%PS_ARTISAN%"'));
+    assert.ok(lines.includes('"C:\\node\\node.exe" "D:\\tools\\ps\\tools\\restore-point.js" "D:\\tools\\ps\\data" "shop-a1b2" %*'));
     // the last command is PHP, so its exit code is the shim's exit code
     assert.equal(lines.filter(Boolean).pop(), '"C:\\php\\8.3\\php.exe" %*');
   });
@@ -317,8 +545,16 @@ describe('fast server (tools/fastserve.js)', () => {
     const pre = ['-c', 'C:\php ini\php.ini', '-d', 'auto_prepend_file=D:\data\share\https.php'];
     const argv = P().fastServeArgs({ script: 'x.js', port: 8000, docroot: 'D:\app\public', php: 'C:\php\php.exe', router: 'D:\app\server.php', workers: 4, pre });
     const a = FS().parseArgs(argv.slice(1));
-    assert.deepEqual(a, { port: 8000, docroot: 'D:\app\public', php: 'C:\php\php.exe', router: 'D:\app\server.php', workers: 4, pre });
+    assert.deepEqual(a, { port: 8000, docroot: 'D:\app\public', php: 'C:\php\php.exe', router: 'D:\app\server.php', workers: 4, pre, htaccess: false, htrouter: null });
     assert.equal(FS().parseArgs(['--workers', '99']).workers, 16);
+    // .htaccess: only without a project router, and then the .htaccess router runs the scripts
+    const ht = FS().parseArgs(P().fastServeArgs({ script: 'x.js', port: 8000, docroot: 'D:\app', php: 'C:\php.exe', router: null, workers: 1, htrouter: 'D:\ps\htrouter.php' }).slice(1));
+    assert.equal(ht.htaccess, true);
+    assert.equal(ht.router, 'D:\ps\htrouter.php');
+    const lara = FS().parseArgs(P().fastServeArgs({ script: 'x.js', port: 8000, docroot: 'D:\app', php: 'C:\php.exe', router: 'D:\app\server.php', workers: 1, htrouter: 'D:\ps\htrouter.php' }).slice(1));
+    assert.equal(lara.htaccess, false);
+    assert.equal(lara.router, 'D:\app\server.php');
+    assert.deepEqual(FS().applyHeaderRules({ a: '1', b: '2' }, [{ action: 'set', name: 'A', value: 'x' }, { action: 'unset', name: 'b' }, { action: 'append', name: 'a', value: 'y' }]), { a: 'x, y' });
     assert.equal(P().phpWorkersOf({}), 4);
     assert.equal(P().phpWorkersOf({ phpWorkers: 1 }), 1);
     assert.equal(P().phpWorkersOf({ phpWorkers: 0 }), 4);
