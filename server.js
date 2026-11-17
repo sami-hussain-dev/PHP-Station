@@ -28,6 +28,9 @@ const shortcuts = require('./lib/shortcuts');
 const backups = require('./lib/backups');
 const dbrepair = require('./lib/dbrepair');
 const timemachine = require('./lib/timemachine');
+const configfiles = require('./lib/configfiles');
+const dbimport = require('./lib/dbimport');
+const doctor = require('./lib/doctor');
 const share = require('./lib/share');
 const importer = require('./lib/importer');
 const teamfile = require('./lib/teamfile');
@@ -573,6 +576,15 @@ async function buildState(ctx) {
 
 route('GET', '/api/state', (ctx) => buildState(ctx));
 
+// Doctor: every check with its fix, and a report for a GitHub issue (personal details masked)
+route('GET', '/api/doctor', async (ctx) => doctor.run(ctx, await buildState(ctx)));
+route('POST', '/api/doctor/fix', async (ctx, { body }) => {
+  needConfirm(body);
+  if (body.action === 'dbtune') return { result: await doctor.tuneDb(ctx, String(body.serverId || '')) };
+  if (body.action === 'defender') return { result: await doctor.addDefenderExclusions(ctx, body.paths) };
+  throw new AppError('BAD_INPUT', tr('doc.badFix'), 400);
+});
+
 route('POST', '/api/runtimes/scan', (ctx) => ({ jobId: runtimes.startScan(ctx, jobs) }));
 
 route('POST', '/api/runtimes/add', (ctx, { body }) => {
@@ -642,6 +654,20 @@ route('POST', '/api/projects/:id/setup', (ctx, { params, body }) => {
 });
 route('POST', '/api/projects/:id/terminal', (ctx, { params, body }) => projects.openTerminal(ctx, params.id, String(body.action || 'shell')));
 route('POST', '/api/projects/:id/open-folder', (ctx, { params }) => projects.openFolder(ctx, params.id));
+// Import database: check the dump first, then import it with the chosen fixes (a restore point comes first).
+route('POST', '/api/projects/:id/db-import/inspect', (ctx, { params, body }) => dbimport.inspect(ctx, params.id, { file: body.file, database: body.database || null }));
+route('POST', '/api/projects/:id/db-import', (ctx, { params, body }) => {
+  needConfirm(body);
+  const input = dbimport.prepare(ctx, params.id, body);
+  const p = projects.getProject(ctx, input.projectId);
+  const busy = (j) => j.projectId === p.id;
+  if (jobs.findRunning('restore-point', busy) || jobs.findRunning('undo', busy) || jobs.findRunning('db-import', busy)) throw new AppError('BUSY', tr('tm.busy'), 409);
+  const jobId = jobs.createJob('db-import', tr('job.dbImport', { name: p.name }), (log, job) => dbimport.importJob(ctx, input, log, job));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+route('GET', '/api/projects/:id/files', (ctx, { params }) => configfiles.list(ctx, params.id));
+route('POST', '/api/projects/:id/open-file', (ctx, { params, body }) => configfiles.open(ctx, params.id, String(body.key || ''), String(body.how || 'editor')));
 route('POST', '/api/projects/:id/write-env-db', (ctx, { params, body }) => projects.writeEnvDb(ctx, params.id, body));
 route('POST', '/api/projects/:id/check', (ctx, { params }) => {
   const p = projects.getProject(ctx, params.id);
@@ -663,16 +689,24 @@ route('POST', '/api/scan-projects', async (ctx) => ({ items: projects.scanProjec
 // ------------------------------------------------------------------------------------------ DB Time Machine
 route('GET', '/api/projects/:id/points', (ctx, { params }) => timemachine.overview(ctx, params.id));
 // Also called by tools\restore-point.js (php.bat shim) before `php artisan migrate*` / `db:*`.
-route('POST', '/api/projects/:id/restore-point', (ctx, { params, body }) => {
+route('POST', '/api/projects/:id/restore-point', async (ctx, { params, body }) => {
   const p = projects.getProject(ctx, params.id);
   const reason = body.reason === 'artisan' ? 'artisan' : 'manual';
-  const command = typeof body.command === 'string' ? body.command.trim().slice(0, 120) : null;
+  const command = typeof body.command === 'string' ? body.command.trim().split(/\s+/)[0].slice(0, 120) : null;
+  const args = Array.isArray(body.args) ? body.args.slice(0, 30).map((a) => String(a).slice(0, 200)) : [];
   if (reason === 'artisan' && (!timemachine.settingsOf(ctx).beforeArtisan || !timemachine.isWritingCommand(command))) return { skipped: true };
   if (jobs.findRunning('restore-point', (j) => j.projectId === p.id) || jobs.findRunning('undo', (j) => j.projectId === p.id)) {
     throw new AppError('BUSY', tr('tm.busy'), 409);
   }
-  const title = reason === 'artisan' ? tr('job.restorePointArtisan', { name: p.name, command }) : tr('job.restorePoint', { name: p.name });
-  const jobId = jobs.createJob('restore-point', title, (log, job) => timemachine.createPoint(ctx, p.id, { reason, command, log, job }));
+  let pre = null;
+  if (reason === 'artisan') {
+    // answered right here when no dump is needed: the terminal is waiting
+    pre = await timemachine.precheck(ctx, p.id, { command, args });
+    if (pre.skipped) return { skipped: true, why: pre.why };
+    if (pre.reused) return { reused: { name: pre.reused.name, createdAt: pre.reused.createdAt, tables: pre.reused.tables, sizeBytes: pre.reused.sizeBytes } };
+  }
+  const title = reason === 'artisan' ? tr('job.restorePointArtisan', { name: p.name, command: [command, ...args].join(' ').slice(0, 120) }) : tr('job.restorePoint', { name: p.name });
+  const jobId = jobs.createJob('restore-point', title, (log, job) => timemachine.createPoint(ctx, p.id, { reason, command, args, log, job, pre }));
   jobs.getJob(jobId).projectId = p.id;
   return { jobId };
 });
@@ -866,7 +900,7 @@ $owner.Show()
 $owner.Activate()
 $d = New-Object System.Windows.Forms.OpenFileDialog
 $d.Title = [string]$env:DP_DESC
-$d.Filter = 'SQL (*.sql)|*.sql'
+$d.Filter = if ($env:DP_FILTER) { [string]$env:DP_FILTER } else { 'SQL (*.sql)|*.sql' }
 $d.CheckFileExists = $true
 $d.Multiselect = $false
 if ($env:DP_START -and (Test-Path -LiteralPath $env:DP_START -PathType Container)) { $d.InitialDirectory = $env:DP_START }
@@ -880,7 +914,7 @@ if ($r -eq [System.Windows.Forms.DialogResult]::OK -and $d.FileName) {
 `;
 
 route('POST', '/api/pick-file', async (ctx, { body }) => {
-  if (body.kind !== 'sql') throw new AppError('BAD_INPUT', tr('err.pickFileKind'), 400);
+  if (body.kind !== 'sql' && body.kind !== 'dump') throw new AppError('BAD_INPUT', tr('err.pickFileKind'), 400);
   let start = '';
   if (typeof body.start === 'string' && body.start.trim()) {
     try {
@@ -888,8 +922,14 @@ route('POST', '/api/pick-file', async (ctx, { body }) => {
       start = util.existsDir(p) ? p : path.win32.dirname(p);
     } catch { start = ''; }
   }
-  const env = util.cleanEnv({ remove: [], set: { DP_START: start || undefined, DP_DESC: tr('pick.sqlTitle') } });
+  const dump = body.kind === 'dump';
+  const env = util.cleanEnv({ remove: [], set: {
+    DP_START: start || undefined,
+    DP_DESC: tr(dump ? 'pick.dumpTitle' : 'pick.sqlTitle'),
+    DP_FILTER: dump ? 'Database dump (*.sql;*.gz;*.zip)|*.sql;*.gz;*.zip|SQL (*.sql)|*.sql|All files (*.*)|*.*' : undefined,
+  } });
   if (!start) delete env.DP_START;
+  if (!dump) delete env.DP_FILTER;
   const r = await procs.psOneShot(PICK_FILE_SCRIPT, { sta: true, env, timeoutMs: 15 * 60 * 1000 });
   if (!r.json) throw new AppError('PICK_FAILED', tr('err.pickFileFailed'), 500);
   return { path: r.json.path || null };

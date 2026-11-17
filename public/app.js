@@ -1032,7 +1032,7 @@
   /** A small icon button that opens a menu. */
   function menuButton(label, iconName, itemsFn, opts) {
     const o = opts || {};
-    const b = btn(label, {kind: o.kind || 'ghost', size: o.size || 'sm', iconOnly: !o.withText, icon: iconName, title: label, fk: o.fk, disabled: o.disabled});
+    const b = btn(o.short || label, {kind: o.kind || 'ghost', size: o.size || 'sm', iconOnly: !o.withText, icon: iconName, title: label, fk: o.fk, disabled: o.disabled, className: o.className});
     b.setAttribute('aria-haspopup', 'menu');
     b.setAttribute('aria-expanded', 'false');
     b.addEventListener('click', () => openMenu(b, itemsFn(), {label}));
@@ -1301,10 +1301,11 @@
     themeBtn.addEventListener('click', () => {
       setThemePref(THEMES[(THEMES.indexOf(themePref) + 1) % THEMES.length]);
     });
+    const doctorBtn = btn(t('doc.btn'), {kind: 'ghost', iconOnly: true, icon: 'radar', attrs: {id: 'doctor-btn'}, onClick: () => openDoctor()});
     byId('topbar').replaceChildren(
       h('div', {class: 'page-heading'}, h('h1', {class: 'page-title', id: 'page-title'}, ''), h('p', {class: 'page-sub', id: 'page-sub'}, '')),
       h('div', {class: 'live-chips', id: 'live-chips'}),
-      h('div', {class: 'topbar-actions'}, refreshBtn, langBtn, themeBtn));
+      h('div', {class: 'topbar-actions'}, doctorBtn, refreshBtn, langBtn, themeBtn));
     updateThemeButton();
     updateLangControls();
     updateFooter();
@@ -2324,28 +2325,33 @@
     const lastRun = !running && !busy && p.lastStartedAt
       ? h('span', {class: 'muted small', dataset: {since: p.lastStartedAt, mode: 'ago', tpl: 'proj.lastRun'}}, t('proj.lastRun', {d: agoText(p.lastStartedAt)}))
       : null;
-    const foot = h('div', {class: 'pc-foot'},
-      btn(t('proj.openBrowser'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'globe', disabled: !(running && url), fk: 'browser', title: running ? t('proj.openBrowser') : t('proj.runFirst'), onClick: () => openUrl(url)}),
-      menuButton(t('term.menu'), 'terminal', () => terminalItems(p), {fk: 'terminal'}),
-      btn(t('pma.projBtn'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'db', fk: 'pma', disabled: !p.dbServerId,
+    // Footer: every action as a tile with its icon AND a short name (the full text stays in the tooltip).
+    // Row 1 opens / uses the project, row 2 checks it and works on its database.
+    const tile = (short, o) => btn(short, Object.assign({kind: 'ghost', size: 'sm', className: 'pc-tile'}, o));
+    const tmCount = p.points && p.points.count ? Math.min(99, p.points.count) : 0;
+    const tmTile = tile(t('pcb.tm'), {icon: 'undo', fk: 'undo', disabled: !p.dbServerId,
+      title: !p.dbServerId ? t('tm.needDb') : tmCount ? tn('tm.btnTitleN', p.points.count) : t('tm.btnTitle'), onClick: () => openTimeMachine(p)});
+    if (tmCount) tmTile.appendChild(h('span', {class: 'pc-tile-badge', 'aria-hidden': 'true'}, String(tmCount)));
+    const foot = h('div', {class: 'pc-foot pc-tiles', role: 'toolbar', 'aria-label': t('pcb.aria', {name: p.name})},
+      tile(t('pcb.browser'), {icon: 'globe', disabled: !(running && url), fk: 'browser', title: running ? t('proj.openBrowser') : t('proj.runFirst'), onClick: () => openUrl(url)}),
+      menuButton(t('term.menu'), 'terminal', () => terminalItems(p), {fk: 'terminal', withText: true, className: 'pc-tile', short: t('pcb.terminal')}),
+      tile(t('pcb.pma'), {icon: 'db', fk: 'pma', disabled: !p.dbServerId,
         title: p.dbServerId ? t('pma.projTitle') : t('pma.noDbChosen'), onClick: (ev) => openPma({projectId: p.id}, ev.currentTarget)}),
-      btn(t('proj.openFolder'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'folder', fk: 'folder', onClick: (ev) => openProjectFolder(p, ev.currentTarget)}),
-      btn(t('proj.logs'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'log', fk: 'logs', onClick: () => openProjectLog(p)}),
-      btn(t('proj.check'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'shield', fk: 'check', onClick: (ev) => runProjectJob(p, 'check', ev.currentTarget)}),
-      btn(t('proj.lint'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'code', fk: 'lint', onClick: (ev) => runProjectJob(p, 'lint', ev.currentTarget)}),
-      h('span', {class: 'pc-foot-sep', 'aria-hidden': 'true'}),
-      btn(t('tm.btn') + (p.points && p.points.count ? ' · ' + Math.min(99, p.points.count) : ''), {kind: 'ghost', size: 'sm', icon: 'undo', fk: 'undo', disabled: !p.dbServerId,
-        className: 'tm-btn',
-        title: !p.dbServerId ? t('tm.needDb') : p.points && p.points.count ? tn('tm.btnTitleN', p.points.count) : t('tm.btnTitle'),
-        onClick: () => openTimeMachine(p)}),
-      btn(t('share.btn'), {kind: p.share ? 'primary' : 'ghost', size: 'sm', iconOnly: true, icon: 'share', fk: 'share',
+      tile(t('pcb.folder'), {icon: 'folder', fk: 'folder', title: t('proj.openFolder'), onClick: (ev) => openProjectFolder(p, ev.currentTarget)}),
+      filesButton(p),
+      tile(t('pcb.share'), {icon: 'share', fk: 'share', className: 'pc-tile' + (p.share ? ' is-active' : ''),
         title: p.share ? t('share.btnOn') : t('share.btnTitle'), onClick: () => openShare(p)}),
-      h('span', {class: 'spacer'}),
-      lastRun,
-      menuButton(t('common.more'), 'more', () => moreItems(p), {fk: 'more'}));
+      tile(t('pcb.logs'), {icon: 'log', fk: 'logs', title: t('proj.logs'), onClick: () => openProjectLog(p)}),
+      tile(t('pcb.check'), {icon: 'shield', fk: 'check', title: t('proj.check'), onClick: (ev) => runProjectJob(p, 'check', ev.currentTarget)}),
+      tile(t('pcb.lint'), {icon: 'code', fk: 'lint', title: t('proj.lint'), onClick: (ev) => runProjectJob(p, 'lint', ev.currentTarget)}),
+      tile(t('pcb.import'), {icon: 'import', fk: 'dbimport', disabled: !p.dbServerId,
+        title: p.dbServerId ? t('di.btnTitle') : t('tm.needDb'), onClick: () => openDbImport(p)}),
+      tmTile,
+      menuButton(t('common.more'), 'more', () => moreItems(p), {fk: 'more', withText: true, className: 'pc-tile', short: t('pcb.more')}));
+    const footMeta = lastRun ? h('div', {class: 'pc-foot-meta'}, lastRun) : null;
 
     return h('article', {class: ['card', 'project-card', running && 'is-running', busy && 'is-starting', wt.open && 'is-warn-open', p.share && 'is-shared'], 'aria-label': t('proj.cardAria', {name: p.name})},
-      head, badges, fixBar, wt.panel, controls, strip, running ? shareStrip(p) : null, foot);
+      head, badges, fixBar, wt.panel, controls, strip, running ? shareStrip(p) : null, foot, footMeta);
   }
 
   /* ----- actions ----- */
@@ -2537,6 +2543,37 @@
     if (r.backup) lines.push(t('env.backup', {path: r.backup}));
     toast('success', t('env.done'), lines.join('\n'), {duration: 8000});
     await refreshNow();
+  }
+  /** "Files" menu: .env, php.ini, my.ini, logs ... opened in the editor from Settings (else Notepad). */
+  const CF_NAMES = {env: '.env', phpIni: 'php.ini', myIni: 'my.ini', laravelLog: 'laravel.log', dbErrorLog: 'error log', htaccess: '.htaccess', composerJson: 'composer.json', hosts: 'hosts'};
+  function filesButton(p) {
+    const b = btn(t('pcb.files'), {kind: 'ghost', size: 'sm', className: 'pc-tile', icon: 'file', fk: 'files', title: t('cf.btnTitle')});
+    b.setAttribute('aria-haspopup', 'menu');
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', async () => {
+      setBusy(b, true);
+      const r = await api('GET', '/api/projects/' + enc(p.id) + '/files');
+      setBusy(b, false);
+      if (!r.ok) return failToast(t('cf.fail'), r);
+      const items = [{heading: t('cf.heading')}];
+      for (const f of r.items || []) {
+        if (!f.path) continue;
+        const label = f.key === 'phpIni' ? t('cf.phpIni', {v: f.version || '?'}) : t('cf.' + f.key);
+        const tip = [f.path, f.key === 'phpIni' && f.relocated ? t('cf.relocatedTip') : null, f.key === 'hosts' ? t('cf.hostsTip') : null].filter(Boolean).join(String.fromCharCode(10));
+        // .env / .htaccess that are not there yet open their folder
+        const canOpen = f.exists || f.key === 'env' || f.key === 'htaccess';
+        items.push({label, icon: 'file', hint: f.exists ? null : t('cf.missing'), disabled: !canOpen, title: tip, onClick: () => openConfigFile(p, f)});
+      }
+      openMenu(b, items, {label: t('cf.menu')});
+    });
+    return b;
+  }
+  async function openConfigFile(p, f) {
+    const r = await api('POST', '/api/projects/' + enc(p.id) + '/open-file', {key: f.key, how: 'editor'});
+    if (!r.ok) return failToast(t('cf.fail'), r);
+    const name = CF_NAMES[f.key] || f.key;
+    const app = {vscode: 'VS Code', cursor: 'Cursor', phpstorm: 'PhpStorm', sublime: 'Sublime Text', notepad: t('cf.notepad')}[r.with] || r.with;
+    toast('info', r.with === 'folder' ? t('cf.openedFolder', {file: name}) : t('cf.opened', {file: name, app}), f.path, {duration: 4000});
   }
   async function openProjectFolder(p, b) {
     setBusy(b, true);
@@ -2833,6 +2870,256 @@
         startProject(findProject(p.id) || p, body);
       }
     });
+  }
+
+  /* ===================== Import database (check the dump, fix what breaks, undo with Time Machine) ===================== */
+  const DI_FIX_ORDER = ['stripdb', 'collation', 'charset', 'definer', 'gtid', 'mysql8', 'sqlmode', 'packet', 'strict', 'latin1'];
+  const DI_LEVEL = {bad: 'bad', warn: 'warn', info: 'info'};
+  function diFixName(f) { return hasT('di.fix.' + f) ? t('di.fix.' + f) : f; }
+  function openDbImport(p, preset) {
+    const pre = preset || {};
+    const envDb = (p.info && p.info.env && p.info.env.database) || '';
+    const fileInput = h('input', {class: 'input mono', id: uid('dif'), type: 'text', placeholder: t('di.filePh'), autocomplete: 'off', spellcheck: 'false', value: pre.file || ''});
+    const dbInput = h('input', {class: 'input mono', id: uid('did'), type: 'text', autocomplete: 'off', spellcheck: 'false', value: pre.database || envDb});
+    const browse = btn(t('common.browse'), {icon: 'folder'});
+    const err = h('div', {class: 'field-error', 'aria-live': 'polite'});
+    const report = h('div', {class: 'stack'});
+    let checked = null; // the inspect result for the current file + database
+    let fixBoxes = [];
+    let mode = 'replace';
+    let m = null;
+
+    const reset = () => { checked = null; fixBoxes = []; report.replaceChildren(); err.textContent = ''; syncGo(); };
+    const syncGo = () => {
+      const go = m && m.button('go');
+      if (!go) return;
+      const lbl = go.querySelector('.btn-label');
+      if (lbl) lbl.textContent = checked ? t('di.import') : t('di.check');
+    };
+    browse.addEventListener('click', async () => {
+      const cur = fileInput.value.trim();
+      setBusy(browse, true, t('np.windowOpening'));
+      const res = await api('POST', '/api/pick-file', cur && !validateWinPath(cur) ? {kind: 'dump', start: dirOf(cur)} : {kind: 'dump'});
+      setBusy(browse, false);
+      if (m.closed) return;
+      if (!res.ok) return failToast(t('di.pickFail'), res);
+      if (res.path) { fileInput.value = res.path; fileInput.classList.remove('is-invalid'); reset(); check(); }
+    });
+    fileInput.addEventListener('input', () => { fileInput.classList.remove('is-invalid'); reset(); });
+    dbInput.addEventListener('input', () => { dbInput.classList.remove('is-invalid'); reset(); });
+
+    function renderReport(r) {
+      const chips = [
+        r.producer ? chip(r.producer, {icon: 'file'}) : null,
+        chip(fmtBytes(r.size) + (r.kind === 'gz' ? ' · gz' : '') + (r.inner ? ' · ' + r.inner : ''), {icon: 'download'}),
+        r.tables ? chip(tn('mv.tablesN', r.tables, {n: fmtInt(r.tables)}), {icon: 'list'}) : null
+      ].filter(Boolean);
+      const tgt = r.target || {};
+      const targetLine = h('p', {class: 'muted small'}, icon('db'), ' ',
+        t('di.target', {db: tgt.database, server: tgt.server || ''}), ' · ',
+        tgt.exists ? tn('di.targetHas', tgt.tables, {n: fmtInt(tgt.tables)}) : t('di.targetNew'));
+      const issues = arr(r.issues).filter((i) => i.code !== 'hasTables');
+      fixBoxes = [];
+      const issueRows = issues.map((i) => {
+        const text = hasT('di.issue.' + i.code) ? t('di.issue.' + i.code, i.params || {}) : i.code;
+        if (!i.fix) return callout(DI_LEVEL[i.level] || 'info', null, bidi(text));
+        const already = fixBoxes.find((x) => x.fix === i.fix);
+        const cb = already ? already.cb : h('input', {type: 'checkbox', checked: arr(r.fixes).includes(i.fix), id: uid('dix'), dataset: {fix: i.fix}});
+        if (!already) fixBoxes.push({fix: i.fix, cb});
+        return h('label', {class: ['check-item', 'di-issue', 'is-' + (i.level || 'info')], for: cb.id},
+          already ? h('span', {class: 'check-spacer'}) : cb,
+          h('span', {class: 'check-icon'}, icon(i.level === 'bad' ? 'alert' : i.level === 'warn' ? 'alert-circle' : 'info')),
+          h('span', {class: 'check-main'}, h('span', {class: 'check-title'}, bidi(text)),
+            h('span', {class: 'check-desc'}, t('di.fixLabel', {fix: diFixName(i.fix)}))));
+      });
+      mode = r.mode === 'merge' && !(tgt.exists && tgt.tables) ? 'merge' : 'replace';
+      const group = uid('dim');
+      const modeView = tgt.exists && tgt.tables ? h('div', {class: 'choices', role: 'radiogroup', 'aria-label': t('di.modeLabel')},
+        ['replace', 'merge'].map((id) => {
+          const radio = h('input', {type: 'radio', name: group, value: id, checked: mode === id, class: 'choice-radio', id: uid('dimr')});
+          radio.addEventListener('change', () => { if (radio.checked) mode = id; });
+          return h('div', {class: 'choice'}, h('label', {class: 'choice-head', for: radio.id}, radio,
+            h('span', {class: 'choice-icon'}, icon(id === 'replace' ? 'refresh' : 'layers')),
+            h('span', {class: 'choice-main'}, h('span', {class: 'choice-title'}, t('di.mode.' + id)),
+              h('span', {class: 'choice-desc'}, t('di.mode.' + id + 'Desc', {db: tgt.database, n: fmtInt(tgt.tables)})))));
+        })) : null;
+      report.replaceChildren(
+        h('div', {class: 'result-summary'}, chips),
+        targetLine,
+        issueRows.length ? h('div', {class: 'stack'}, h('div', {class: 'field-label'}, t('di.issuesTitle')), ...issueRows)
+          : callout('ok', null, t('di.noIssues')),
+        modeView,
+        h('p', {class: 'dbm-never'}, icon('lock'), tgt.exists && tgt.tables ? t('di.safe', {db: tgt.database}) : t('di.safeNew')));
+    }
+
+    async function check() {
+      err.textContent = '';
+      const f = fileInput.value.trim();
+      const problem = !f ? t('di.needFile') : validateWinPath(f) || (/\.(sql|gz|zip)$/i.test(f) ? null : t('di.notDump'));
+      if (problem) { err.textContent = problem; fileInput.classList.add('is-invalid'); fileInput.focus(); return; }
+      const db = dbInput.value.trim();
+      if (db && !/^[A-Za-z0-9_$-]{1,64}$/.test(db)) { err.textContent = t('di.badDb'); dbInput.classList.add('is-invalid'); dbInput.focus(); return; }
+      const res = await modalBusy(m, m.button('go'), t('di.checking'), () => api('POST', '/api/projects/' + enc(p.id) + '/db-import/inspect', {file: f, database: db || null}));
+      if (m.closed) return;
+      if (!res.ok) { err.textContent = errorText(res, t('di.checkFail')); return; }
+      checked = res;
+      renderReport(res);
+      syncGo();
+    }
+
+    const submit = async () => {
+      if (!checked) return check();
+      const fixes = fixBoxes.filter((x) => x.cb.checked).map((x) => x.fix);
+      const body = {confirm: true, file: checked.file, database: checked.target.database, mode, fixes, invalidUtf8: !!checked.invalidUtf8, mysql8: !!checked.mysql8};
+      const res = await modalBusy(m, m.button('go'), t('common.startingShort'), () => api('POST', '/api/projects/' + enc(p.id) + '/db-import', body));
+      if (!res.ok || !res.jobId) { err.textContent = errorText(res, t('di.startFail')); return; }
+      m.close(true);
+      runDbImportJob(p, res.jobId, body);
+    };
+    m = openModal({
+      title: t('di.title'), subtitle: p.name, icon: 'import', size: 'lg',
+      body: [
+        h('p', {class: 'modal-text'}, t('di.text')),
+        h('div', {class: 'field'}, h('label', {class: 'field-label', for: fileInput.id}, t('di.fileLabel')),
+          h('div', {class: 'input-row'}, fileInput, browse)),
+        h('div', {class: 'field'}, h('label', {class: 'field-label', for: dbInput.id}, t('di.dbLabel')), dbInput,
+          h('div', {class: 'field-hint'}, envDb ? t('di.dbHint', {db: envDb}) : t('di.dbHintNone'))),
+        report,
+        err
+      ],
+      actions: [{label: t('common.cancel'), value: null}, {id: 'go', label: t('di.check'), kind: 'primary', icon: 'import', onClick: submit}]
+    });
+    if (pre.file) check();
+    return m.result;
+  }
+
+  function runDbImportJob(p, jobId, body) {
+    showJob(jobId, {
+      title: t('di.job', {db: body.database || ''}), subtitle: p.name, icon: 'import',
+      progress: (job) => jobProgress(job, true),
+      renderResult: (job) => dbImportResult(p, job, body),
+      doneMessage: (job) => {
+        const r = job.result || {};
+        return typeof r.tables === 'number' ? tn('mv.tablesN', r.tables, {n: fmtInt(r.tables)}) : null;
+      },
+      onFinal: async () => { await refreshNow(); }
+    });
+  }
+
+  function dbImportResult(p, job, body) {
+    const r = job.result && typeof job.result === 'object' ? job.result : {};
+    const tmBtn = r.point ? btn(t('di.openTm'), {size: 'sm', icon: 'undo', onClick: () => openTimeMachine(findProject(p.id) || p)}) : null;
+    if (job.status === 'done') {
+      return h('div', {class: 'stack'},
+        callout('ok', t('di.okTitle', {db: r.database || body.database}), t('di.okText', {n: fmtInt(r.tables || 0), secs: Math.max(1, Math.round((r.tookMs || 0) / 1000))})),
+        r.point ? callout('info', null, t('di.undoHint'), [tmBtn]) : null);
+    }
+    if (job.status !== 'failed') return null;
+    const suggest = arr(r.suggest);
+    const parts = [];
+    const head = r.line ? t('di.failTitle', {line: fmtInt(r.line)}) : t('di.failNoLine');
+    const why = r.mysqlCode ? 'ERROR ' + r.mysqlCode + ' — ' + (r.message || '') : (r.message || job.error || '');
+    const actions = [];
+    if (suggest.length) {
+      const again = btn(t('di.fixAgain'), {kind: 'primary', size: 'sm', icon: 'wand', onClick: async () => {
+        const fixes = arr(r.fixes).concat(suggest.filter((f) => f !== 'replace'));
+        const next = Object.assign({}, body, {fixes: fixes.filter((f, i) => fixes.indexOf(f) === i), mode: suggest.includes('replace') ? 'replace' : body.mode, confirm: true});
+        setBusy(again, true);
+        const res = await api('POST', '/api/projects/' + enc(p.id) + '/db-import', next);
+        setBusy(again, false);
+        if (!res.ok || !res.jobId) return failToast(t('di.startFail'), res);
+        const top = modalStack[modalStack.length - 1];
+        if (top) top.close();
+        runDbImportJob(p, res.jobId, next);
+      }});
+      actions.push(again);
+    }
+    if (r.file && r.line) {
+      const link = fileLink(r.file, r.line, null);
+      if (link) actions.push(link);
+    }
+    if (tmBtn) actions.push(tmBtn);
+    parts.push(callout(suggest.length ? 'warn' : 'bad', head,
+      h('div', {class: 'stack'},
+        h('code', {class: 'break'}, bidi(why)),
+        suggest.length ? h('div', null, t('di.fixWillAdd', {list: suggest.map(diFixName).join(', ')})) : h('div', null, t('di.noFix'))),
+      actions));
+    if (arr(r.snippet).length) {
+      parts.push(h('pre', {class: 'di-snippet', dir: 'ltr'}, arr(r.snippet).map((s) =>
+        h('div', {class: ['di-line', s.n === r.line && 'is-bad']}, h('span', {class: 'di-ln'}, String(s.n)), h('span', null, s.text)))));
+    }
+    if (r.point) parts.push(h('p', {class: 'muted small'}, t('di.failUndo')));
+    return h('div', {class: 'stack'}, ...parts);
+  }
+
+
+  /* ===================== Doctor (whole setup check, fixes, report) ===================== */
+  const DOC_ICON = {ok: 'check-circle', info: 'info', warn: 'alert-circle', bad: 'alert'};
+  async function openDoctor() {
+    const list = h('div', {class: 'stack'});
+    let data = null;
+    let m = null;
+    const load = async () => {
+      list.replaceChildren(h('p', {class: 'muted'}, spinner(), ' ', t('doc.checking')));
+      const r = await api('GET', '/api/doctor');
+      if (m && m.closed) return;
+      if (!r.ok) { list.replaceChildren(callout('bad', t('doc.fail'), errorText(r))); return; }
+      data = r;
+      const order = {bad: 0, warn: 1, info: 2, ok: 3};
+      const checks = arr(r.checks).slice().sort((a, b) => (order[a.level] - order[b.level]));
+      list.replaceChildren(...checks.map((c) => h('div', {class: ['doc-row', 'is-' + c.level]},
+        h('span', {class: 'doc-icon'}, icon(DOC_ICON[c.level] || 'info')),
+        h('div', {class: 'doc-main'},
+          h('div', {class: 'doc-title'}, bidi(c.title)),
+          c.text ? h('div', {class: 'doc-text'}, bidi(c.text)) : null,
+          c.fix ? h('div', {class: 'doc-actions'}, doctorFixButton(c, load)) : null))));
+    };
+    m = openModal({
+      title: t('doc.title'), subtitle: t('doc.subtitle'), icon: 'radar', size: 'lg',
+      body: [list],
+      actions: [
+        {label: t('doc.copy'), icon: 'copy', onClick: async () => {
+          if (!data) return;
+          try { await navigator.clipboard.writeText(data.report); toast('success', t('doc.copied'), t('doc.copiedText')); } catch (e) { toast('error', t('copy.fail'), t('copy.failHint')); }
+        }},
+        {label: t('doc.again'), icon: 'refresh', onClick: () => load()},
+        {label: t('common.close'), value: null, kind: 'primary'}
+      ]
+    });
+    load();
+    return m.result;
+  }
+  function doctorFixButton(c, reload) {
+    const f = c.fix;
+    if (f.action === 'url') return btn(t('doc.fix.url'), {size: 'sm', kind: 'primary', icon: 'external', onClick: () => openUrl(f.url)});
+    if (f.action === 'dbtune') {
+      const b = btn(t('doc.fix.dbtune'), {size: 'sm', kind: 'primary', icon: 'bolt', onClick: async () => {
+        const yes = await confirmDialog({title: t('doc.tuneQ'), icon: 'bolt', message: t('doc.tuneMsg'), details: f.myIni ? h('code', {class: 'break'}, f.myIni) : null, confirmLabel: t('doc.fix.dbtune')});
+        if (!yes) return;
+        setBusy(b, true);
+        const r = await api('POST', '/api/doctor/fix', {confirm: true, action: 'dbtune', serverId: f.serverId});
+        setBusy(b, false);
+        if (!r.ok) return failToast(t('doc.fixFail'), r);
+        toast('success', t('doc.tuned'), r.result && r.result.backup ? t('doc.tunedBackup', {file: r.result.backup}) : t('doc.tunedLive'), {duration: 9000});
+        reload();
+      }});
+      return b;
+    }
+    if (f.action === 'defender') {
+      const b = btn(t('doc.fix.defender'), {size: 'sm', icon: 'shield', onClick: async () => {
+        const yes = await confirmDialog({title: t('doc.defQ'), icon: 'shield', danger: true, message: t('doc.defMsg'),
+          details: h('pre', {class: 'doc-paths', dir: 'ltr'}, arr(f.paths).join('\n')), confirmLabel: t('doc.defYes')});
+        if (!yes) return;
+        setBusy(b, true, t('doc.defWaiting'));
+        const r = await api('POST', '/api/doctor/fix', {confirm: true, action: 'defender', paths: f.paths});
+        setBusy(b, false);
+        if (!r.ok) return failToast(t('doc.fixFail'), r);
+        if (r.result && r.result.ok) toast('success', t('doc.defDone'), t('doc.defDoneText'));
+        else toast('warn', t('doc.defNot'), t('doc.defNotText'));
+      }});
+      return b;
+    }
+    return null;
   }
 
   /* ===================== Setup suggestions ("Setup" tag + checklist) ===================== */
@@ -3294,7 +3581,7 @@
 
   /* ===================== DB Time Machine (restore points + undo) ===================== */
   function pointReasonChip(r) {
-    const kind = r === 'manual' ? 'accent' : r === 'artisan' ? 'info' : r === 'pre-undo' ? 'warn' : null;
+    const kind = r === 'manual' ? 'accent' : r === 'artisan' ? 'info' : r === 'pre-undo' || r === 'pre-import' ? 'warn' : null;
     return chip(hasT('tm.reason.' + r) ? t('tm.reason.' + r) : r, {kind});
   }
   async function openTimeMachine(p0, tab) {
@@ -6458,7 +6745,7 @@
   }
   function settingsSig(s) {
     return JSON.stringify([s.panelPort, s.webPortRange, s.dbPortRange, s.projectRoots, s.runtimeRoots, s.extraPaths, s.dumpDir, s.dbBindLocal, s.autoStartDb, s.dbEnvOverride,
-      s.shutdownGuard, s.snapshotOnStart, s.snapshotKeep, s.snapshotMaxMB, s.dailyDump, s.dumpKeep, s.pointBeforeArtisan, s.pointKeep, s.phpWorkers, s.dbHistory, s.historyDays]);
+      s.shutdownGuard, s.snapshotOnStart, s.snapshotKeep, s.snapshotMaxMB, s.dailyDump, s.dumpKeep, s.pointBeforeArtisan, s.pointKeep, s.phpWorkers, s.dbHistory, s.historyDays, s.htaccess]);
   }
   function switchOf(el) {
     return el && (el.matches && el.matches('.switch') ? el : el.querySelector('.switch'));
@@ -6506,6 +6793,7 @@
     SE.pointArtisan = makeSwitch({checked: true, label: t('st.pointArtisan'), fk: 'tmart', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
     SE.pointKeep = h('input', {class: 'input mono', id: 'st-point-keep', type: 'number', min: 1, max: 200});
     SE.phpWorkers = h('input', {class: 'input mono', id: 'st-php-workers', type: 'number', min: 1, max: 16});
+    SE.htaccess = makeSwitch({checked: true, label: t('st.htaccess'), fk: 'htacc', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
     SE.dbHistory = makeSwitch({checked: true, label: t('st.dbHistory'), fk: 'dbhist', onToggle: (v, el) => { el.setAttribute('aria-checked', String(v)); markDirty(); }});
     SE.historyDays = h('input', {class: 'input mono', id: 'st-history-days', type: 'number', min: 1, max: 90});
     SE.snapOn = h('select', {class: 'select', id: 'st-snap-on'},
@@ -6548,6 +6836,7 @@
     const portsPanel = panel('hash', t('st.ports'), null,
       field(t('st.panelPort'), SE.panelPort, null, t('st.panelPortHint')),
       field(t('st.phpWorkers'), SE.phpWorkers, null, t('st.phpWorkersHint')),
+      h('div', {class: 'field'}, h('div', {class: 'row'}, SE.htaccess, h('span', null, t('st.htaccessText'))), h('div', {class: 'field-hint'}, t('st.htaccessHint'))),
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.webPorts')), range(SE.webFrom, SE.webTo), h('div', {class: 'field-hint'}, t('st.webPortsHint'))),
       h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('st.dbPorts')), range(SE.dbFrom, SE.dbTo)));
     const dbAutoPanel = panel('db', t('st.dbAuto'), null,
@@ -6628,6 +6917,7 @@
     swSet(SE.pointArtisan, s.pointBeforeArtisan !== false);
     SE.pointKeep.value = String(s.pointKeep || 20);
     SE.phpWorkers.value = String(s.phpWorkers || 4);
+    swSet(SE.htaccess, s.htaccess !== false);
     swSet(SE.dbHistory, s.dbHistory !== false);
     SE.historyDays.value = String(s.historyDays || 7);
     SE.loadedSig = settingsSig(s);
@@ -6648,7 +6938,8 @@
       autoDb: swVal(SE.autoDb, true), envOverride: swVal(SE.envOverride, true),
       guard: swVal(SE.guard, true), dailyDump: swVal(SE.dailyDump, true),
       snapOn: SE.snapOn.value, snapKeep: SE.snapKeep.value, dumpKeep: SE.dumpKeep.value, snapMax: SE.snapMax.value,
-      pointArtisan: swVal(SE.pointArtisan, true), pointKeep: SE.pointKeep.value, phpWorkers: SE.phpWorkers.value, dbHistory: swVal(SE.dbHistory, true), historyDays: SE.historyDays.value
+      pointArtisan: swVal(SE.pointArtisan, true), pointKeep: SE.pointKeep.value, phpWorkers: SE.phpWorkers.value, dbHistory: swVal(SE.dbHistory, true), historyDays: SE.historyDays.value,
+      htaccess: swVal(SE.htaccess, true)
     };
   }
   function restoreSettings(s) {
@@ -6664,6 +6955,7 @@
     swSet(SE.dailyDump, s.dailyDump !== false);
     SE.snapOn.value = s.snapOn || 'daily'; SE.snapKeep.value = s.snapKeep; SE.dumpKeep.value = s.dumpKeep; SE.snapMax.value = s.snapMax;
     swSet(SE.pointArtisan, s.pointArtisan !== false); SE.pointKeep.value = s.pointKeep; SE.phpWorkers.value = s.phpWorkers; swSet(SE.dbHistory, s.dbHistory !== false); SE.historyDays.value = s.historyDays;
+    swSet(SE.htaccess, s.htaccess !== false);
     SE.dirty = true;
     updateSaveBar();
   }
@@ -6707,7 +6999,8 @@
       autoStartDb: swVal(SE.autoDb, true), dbEnvOverride: swVal(SE.envOverride, true),
       shutdownGuard: swVal(SE.guard, true), dailyDump: swVal(SE.dailyDump, true), snapshotOnStart: SE.snapOn.value,
       snapshotKeep: Number(SE.snapKeep.value), dumpKeep: Number(SE.dumpKeep.value), snapshotMaxMB: Number(SE.snapMax.value),
-      pointBeforeArtisan: swVal(SE.pointArtisan, true), pointKeep: Number(SE.pointKeep.value), phpWorkers: Number(SE.phpWorkers.value), dbHistory: swVal(SE.dbHistory, true), historyDays: Number(SE.historyDays.value)
+      pointBeforeArtisan: swVal(SE.pointArtisan, true), pointKeep: Number(SE.pointKeep.value), phpWorkers: Number(SE.phpWorkers.value), dbHistory: swVal(SE.dbHistory, true), historyDays: Number(SE.historyDays.value),
+      htaccess: swVal(SE.htaccess, true)
     };
     setBusy(SE.saveBtn, true, t('common.saving'));
     const r = await api('POST', '/api/settings', body);

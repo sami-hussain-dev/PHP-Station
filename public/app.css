@@ -1797,3 +1797,55 @@ a.ib-file:hover span { text-decoration: underline; }
   .ib-err-when { justify-content: flex-start; }
   .clone-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ===== Import database ===== */
+.di-issue.is-bad .check-icon { color: var(--bad-text); }
+.di-issue.is-warn .check-icon { color: var(--warn-text, var(--warn)); }
+.check-spacer { width: 16px; flex: none; }
+.di-snippet {
+  margin: 0; padding: 8px 0; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2);
+  font: 12.5px/1.55 var(--mono); overflow-x: auto; max-height: 220px;
+}
+.di-line { display: flex; gap: 12px; padding: 0 12px; white-space: pre; }
+.di-line.is-bad { background: var(--bad-soft); box-shadow: inset 3px 0 0 var(--bad); }
+.di-ln { min-width: 4ch; text-align: end; color: var(--text-3); user-select: none; }
+
+/* ===== Doctor ===== */
+.doc-row { display: flex; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; }
+.doc-row.is-bad { border-color: var(--bad-line); background: var(--bad-soft); }
+.doc-row.is-warn { border-color: var(--warn-line); background: var(--warn-soft); }
+.doc-icon { flex: none; padding-top: 2px; }
+.doc-row.is-ok .doc-icon { color: var(--ok, var(--text-3)); }
+.doc-row.is-bad .doc-icon { color: var(--bad-text); }
+.doc-row.is-warn .doc-icon { color: var(--warn-text); }
+.doc-row.is-info .doc-icon { color: var(--text-3); }
+.doc-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.doc-title { font-weight: 600; }
+.doc-text { color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; }
+.doc-actions { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-paths { margin: 0; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ===== Project card actions: icon + name tiles ===== */
+.project-card .pc-foot.pc-tiles {
+  /* always two even rows of six (three rows of four on a phone) */
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px;
+  padding: 10px 10px 8px; flex-wrap: initial;
+}
+@media (max-width: 560px) { .project-card .pc-foot.pc-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.pc-tiles .pc-tile.btn {
+  flex-direction: column; justify-content: flex-start; gap: 5px; width: auto; height: auto; min-height: 56px;
+  padding: 8px 4px 7px; border-radius: 10px; white-space: normal;
+}
+.pc-tiles .pc-tile svg { width: 18px; height: 18px; flex: none; }
+.pc-tiles .pc-tile .btn-label { font-size: 11.5px; font-weight: 500; line-height: 1.2; text-align: center; color: var(--text-2); overflow-wrap: anywhere; }
+.pc-tiles .pc-tile:hover:not(:disabled) .btn-label { color: var(--text); }
+.pc-tiles .pc-tile:disabled { opacity: .42; }
+.pc-tiles .pc-tile.is-active { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.pc-tiles .pc-tile.is-active .btn-label { color: var(--accent-text); }
+.pc-tiles .pc-tile > .spinner { position: absolute; top: 6px; inset-inline-start: 6px; }
+.pc-tile-badge {
+  position: absolute; top: 5px; inset-inline-end: 7px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 700; line-height: 1; background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.pc-foot-meta { padding: 0 16px 10px; font-size: 12px; text-align: end; }

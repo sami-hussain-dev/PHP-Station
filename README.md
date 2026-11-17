@@ -93,6 +93,8 @@ Other apps can use the catcher too: set `MAIL_HOST=127.0.0.1` and `MAIL_PORT=102
 - **Every action.** Every INSERT, UPDATE and DELETE is recorded, whether it came from the app, phpMyAdmin or plain SQL. Each one shows its time, its SQL and the old and new values. **Undo this** reverses only that one action: a deleted row comes back and everything else stays. The undo is recorded too, so it can be undone.
 - **Busy days stay readable.** Actions are grouped by hour, and repeats fold into one line (`orders · INSERT × 250`). The counts double as filters, and you can search by `id=21` or by any value.
 - **Restore points.** A full copy of the database is saved automatically before `php artisan migrate*` or `db:*`, or by hand. One click goes back. The current state is saved first, and every restore is test-imported into a scratch database before the real one is touched.
+- **No waiting in the terminal.** When there is nothing to migrate, or nothing was written since the last restore point, the command starts at once (about 0.1 s) because no new copy is needed.
+- **Import any dump.** A `.sql`, `.sql.gz` or `.zip` from MySQL 8, MariaDB, phpMyAdmin or HeidiSQL is checked first. MySQL 8 collations, `DEFINER`s, GTID lines, zero dates, oversized rows, UTF-16 and non-UTF-8 files get their fix switched on before the import starts. If the server still stops, you see its error with the dump line it came from and a **Fix and import again** button. A restore point comes first, so an import can be undone.
 
 <sub>Built on MariaDB's own row-based binary log (10.2+), switched on through command-line flags only. No `my.ini` is edited. The log is kept for 7 days, which you can change.</sub>
 
@@ -127,6 +129,8 @@ Add a **`phpstation.json`** to your repository to pin versions for the whole tea
 - **Its own PHP, Composer and DB server per project**, running at the same time. PHP Station reads `composer.json`, `composer.lock` and `.env`, detects the Laravel version and **suggests the right PHP** (★).
 - **Shift from XAMPP / Laragon in one click.** Your `htdocs` / `www` folders and Apache / nginx virtual hosts are found, and each project keeps the PHP and DB server it used before. Nothing is copied or moved.
 - **Fast server.** On Windows, `php -S` handles one request at a time. PHP Station serves static files itself and spreads PHP over 4 workers per project. Pages load all at once instead of one file after another.
+- **`.htaccess` without Apache.** For projects without a router of their own (plain PHP, WordPress, CodeIgniter 3 ...), PHP Station applies the `.htaccess` rules most projects use: `RewriteRule` / `RewriteCond` with `-f` / `-d` and back-references, `[L]` `[QSA]` `[R=301]` `[F]` `[G]`, `Redirect` / `RedirectMatch`, `Require all denied` / `Deny from all` and `<FilesMatch>`, `DirectoryIndex`, `ErrorDocument` and `Header set`. `REQUEST_URI` stays what the browser asked for, as under Apache. Lines it cannot apply, such as `php_value`, are listed on the project card.
+- **Files menu.** `.env`, the `php.ini` and `my.ini` the project really uses, `laravel.log`, the DB error log, `.htaccess` and the hosts file open in your editor in one click.
 - **Live share link.** One button gives a running project a public `https://….trycloudflare.com` address for a client's phone. It uses a Cloudflare quick tunnel: no account, no router settings.
 - **A terminal per project**, where `php` and `composer` are that project's versions. Also: a setup checklist (`.env`, `key:generate`, `composer install`, each `.env` change backed up first), adopting `php artisan serve` servers you started yourself, and "Show paths" with copy buttons.
 
@@ -185,13 +189,17 @@ PHP Station does not throw away what you have: it finds your XAMPP / Laragon ins
 | Snapshots, daily `.sql` dumps, one-click repair | ✅ | ❌ | ❌ |
 | Public HTTPS link for a client, no account | ✅ | ❌ | ⚠️ ngrok, manual |
 | Official downloads with SHA-256 check | ✅ | – | – |
+| `.htaccess` rewrites, redirects and access rules | ✅ common rules | ✅ Apache | ✅ Apache |
+| Import a MySQL 8 dump into MariaDB, with fixes and undo | ✅ | ❌ | ❌ |
+| One-click health check and an issue report without personal details | ✅ | ❌ | ❌ |
 | Size of the tool itself | ~1 MB, zero dependencies | ~150 MB+ | ~100 MB+ |
 
 <sub>Based on the default behaviour of XAMPP and Laragon at the time of writing. If something here is out of date, please open an issue.</sub>
 
 ## Requirements
 
-- **Windows 10 or 11** (x64). macOS and Linux are on the roadmap.
+- **Windows 10 or 11** (x64). PHP Station is built on Windows-only parts (the shutdown guard, process control, PowerShell). macOS and Linux are on the roadmap.
+- **Databases:** PHP Station starts, guards and backs up **MariaDB and MySQL** servers. Projects that use **SQLite** run as they are, because SQLite is a file. Projects that use **PostgreSQL** run against your own PostgreSQL server; PHP Station does not start it or back it up.
 - **Node.js 18+**. `PHP-Station.bat` can fetch a portable copy for you.
 - **PHP / MariaDB / Composer**: the ones you already have, or install them with the Setup wizard.
 - **Git**, only for *Open from GitHub*.
@@ -250,6 +258,24 @@ No to all three. Everything goes into PHP Station's own folders, the PATH is nev
 <summary><b>Where is my data?</b></summary>
 
 `data\` holds settings, logs, caught mail and `.env` backups. `runtimes\` holds installed PHP / MariaDB / Composer. DB backups go to `devpanel-backups\` inside the dump folder you choose in Settings. None of these are committed to git.
+</details>
+
+<details>
+<summary><b>Does <code>.htaccess</code> work without Apache?</b></summary>
+
+The common rules do. For projects without a router of their own, PHP Station applies rewrites (front controllers, pretty URLs like `product/5` → `product.php?id=5`), redirects, `Require all denied` / `<FilesMatch>` blocks, `DirectoryIndex`, `ErrorDocument` and `Header set`, and a deeper folder's `.htaccess` wins as in Apache. Laravel projects use Laravel's own router, so nothing changes for them. Anything it cannot apply (for example `php_value`, `SetEnv`, `AuthType`) is listed on the project card, with the line number. Put `php_value` settings in `php.ini` instead (**Files → php.ini**). Turn it off in **Settings → .htaccess**.
+</details>
+
+<details>
+<summary><b>PHP Station is new and made by one developer. What if something breaks?</b></summary>
+
+Press **Doctor** (top right). It checks PHP, projects, database servers, their speed settings, disk space and updates, and shows each problem with its fix. **Copy report** gives a ready-made text for a [GitHub issue](https://github.com/sami-hussain-dev/PHP-Station/issues/new/choose), with your name, PC name and folders masked. The code is MIT-licensed and readable (one file per feature, no build step, more than 250 tests), so anyone can fix or fork it. Your XAMPP / Laragon installs are never changed, so you can always go back to them.
+</details>
+
+<details>
+<summary><b>Why are imports and migrations slow on my machine?</b></summary>
+
+Usually one of two things, and **Doctor** finds both. XAMPP's MariaDB ships with a 16 MB buffer pool and a 1 MB `max_allowed_packet`; **Apply faster settings** raises them on the running server and in `my.ini` (the old file is kept). Windows Defender also scans every file a database server writes, so each new table takes ~0.3 s; Doctor can exclude just the database folders, after you confirm and Windows asks for administrator permission.
 </details>
 
 ## How it works
