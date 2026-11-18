@@ -292,7 +292,16 @@ async function cmdServe(args) {
   shortcuts.ensureAuto(ctx, { toolDir: TOOL_DIR, description: tr('shortcut.description') })
     .then((r) => { if (!r.skipped) log(`shortcuts: ${JSON.stringify(r)}`); });
   // daily dump of every running DB server (one job at a time, checked every 10 min)
+  // base copies for instant restore points: soon after the panel starts, then with every tick
+  const baseTick = async () => {
+    try {
+      const running = new Set((await dbViewList(ctx)).filter((d) => d.status === 'running').map((d) => d.id));
+      for (const p of ctx.store.data.projects || []) if (p.dbServerId && running.has(p.dbServerId)) ensureBase(ctx, p.id);
+    } catch (e) { log(`base check: ${e.message}`); }
+  };
+  setTimeout(baseTick, 20 * 1000).unref();
   const dumpTick = async () => {
+    await baseTick();
     try {
       if (jobs.findRunning('backup')) return;
       const due = backups.dueForDailyDump(ctx, await dbViewList(ctx));
@@ -635,7 +644,11 @@ function startOpts(body) {
   if (body.port !== undefined && body.port !== null && body.port !== '') o.port = body.port;
   return o;
 }
-route('POST', '/api/projects/:id/start', async (ctx, { params, body }) => startResult(await projects.startProject(ctx, params.id, startOpts(body))));
+route('POST', '/api/projects/:id/start', async (ctx, { params, body }) => {
+  const r = startResult(await projects.startProject(ctx, params.id, startOpts(body)));
+  if (r && r.ok !== false) setTimeout(() => ensureBase(ctx, params.id), 15000);
+  return r;
+});
 route('POST', '/api/projects/:id/stop', async (ctx, { params }) => {
   share.stop(ctx, params.id, 'project stopped');
   await projects.stopProject(ctx, params.id);
@@ -662,7 +675,8 @@ route('POST', '/api/projects/:id/db-import', (ctx, { params, body }) => {
   const p = projects.getProject(ctx, input.projectId);
   const busy = (j) => j.projectId === p.id;
   if (jobs.findRunning('restore-point', busy) || jobs.findRunning('undo', busy) || jobs.findRunning('db-import', busy)) throw new AppError('BUSY', tr('tm.busy'), 409);
-  const jobId = jobs.createJob('db-import', tr('job.dbImport', { name: p.name }), (log, job) => dbimport.importJob(ctx, input, log, job));
+  const jobId = jobs.createJob('db-import', tr('job.dbImport', { name: p.name }), (log, job) => dbimport.importJob(ctx, input, log, job)
+    .finally(() => setTimeout(() => ensureBase(ctx, p.id), 3000)));
   jobs.getJob(jobId).projectId = p.id;
   return { jobId };
 });
@@ -687,6 +701,21 @@ route('POST', '/api/projects/:id/log/clear', (ctx, { params }) => projects.clear
 route('POST', '/api/scan-projects', async (ctx) => ({ items: projects.scanProjects(ctx, await dbViewList(ctx)) }));
 
 // ------------------------------------------------------------------------------------------ DB Time Machine
+
+/**
+ * A base copy for instant restore points, in the background (never blocks a terminal): only when the
+ * project's MariaDB writes the binlog and has no usable base for this server run, one at a time.
+ */
+function ensureBase(ctx, projectId) {
+  if (ctx.store.data.settings.pointBeforeArtisan === false) return;
+  if (jobs.findRunning('tm-base') || jobs.findRunning('undo', (j) => j.projectId === projectId) || jobs.findRunning('db-import', (j) => j.projectId === projectId)) return;
+  timemachine.baseNeeded(ctx, projectId).then((need) => {
+    if (!need || jobs.findRunning('tm-base')) return;
+    const p = projects.getProject(ctx, projectId);
+    const jobId = jobs.createJob('tm-base', tr('job.tmBase', { name: p.name }), (log, job) => timemachine.createPoint(ctx, projectId, { reason: 'auto', command: 'base', log, job }));
+    jobs.getJob(jobId).projectId = projectId;
+  }, () => { /* server stopped, no binlog ...: nothing to do */ });
+}
 route('GET', '/api/projects/:id/points', (ctx, { params }) => timemachine.overview(ctx, params.id));
 // Also called by tools\restore-point.js (php.bat shim) before `php artisan migrate*` / `db:*`.
 route('POST', '/api/projects/:id/restore-point', async (ctx, { params, body }) => {
@@ -701,9 +730,13 @@ route('POST', '/api/projects/:id/restore-point', async (ctx, { params, body }) =
   let pre = null;
   if (reason === 'artisan') {
     // answered right here when no dump is needed: the terminal is waiting
-    pre = await timemachine.precheck(ctx, p.id, { command, args });
+    pre = await timemachine.precheck(ctx, p.id, { command, args, baseRunning: !!jobs.findRunning('tm-base', (j) => j.projectId === p.id) });
     if (pre.skipped) return { skipped: true, why: pre.why };
     if (pre.reused) return { reused: { name: pre.reused.name, createdAt: pre.reused.createdAt, tables: pre.reused.tables, sizeBytes: pre.reused.sizeBytes } };
+    if (pre.marker) {
+      if (pre.refreshBase) setTimeout(() => ensureBase(ctx, p.id), 5000);
+      return { marker: { name: pre.marker.name, createdAt: pre.marker.createdAt, tables: pre.marker.tables, base: pre.marker.base } };
+    }
   }
   const title = reason === 'artisan' ? tr('job.restorePointArtisan', { name: p.name, command: [command, ...args].join(' ').slice(0, 120) }) : tr('job.restorePoint', { name: p.name });
   const jobId = jobs.createJob('restore-point', title, (log, job) => timemachine.createPoint(ctx, p.id, { reason, command, args, log, job, pre }));
@@ -718,7 +751,8 @@ route('POST', '/api/projects/:id/undo', (ctx, { params, body }) => {
   if (jobs.findRunning('restore-point', (j) => j.projectId === p.id) || jobs.findRunning('undo', (j) => j.projectId === p.id)) {
     throw new AppError('BUSY', tr('tm.busy'), 409);
   }
-  const jobId = jobs.createJob('undo', tr('job.undo', { name: p.name }), (log, job) => timemachine.undoTo(ctx, p.id, name, log, job));
+  const jobId = jobs.createJob('undo', tr('job.undo', { name: p.name }), (log, job) => timemachine.undoTo(ctx, p.id, name, log, job)
+    .finally(() => setTimeout(() => ensureBase(ctx, p.id), 3000)));
   Object.assign(jobs.getJob(jobId), { projectId: p.id, full: true });
   return { jobId };
 });

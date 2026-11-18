@@ -3640,12 +3640,13 @@
           h('span', {class: 'check-icon'}, icon(x.reason === 'pre-undo' ? 'undo' : 'layers')),
           h('span', {class: 'check-main grow'},
             h('span', {class: 'check-title row'}, fmtStamp(x.name), pointReasonChip(x.reason),
+              x.marker ? chip(t('tm.instant'), {kind: x.ok ? 'info' : 'warn', icon: 'bolt', title: x.ok ? t('tm.instantTip') : t('tm.noBaseTip')}) : null,
               i === 0 ? chip(t('tm.newest'), {kind: 'ok'}) : null,
               x.createdAt ? h('span', {class: 'muted small'}, agoText(x.createdAt)) : null),
             h('span', {class: 'check-desc'},
               x.command ? h('code', {class: 'ltr'}, x.command) : null, x.command ? ' · ' : null,
               h('span', {class: 'ltr'}, (x.database || '?') + (meta ? ' · ' + meta : '')))),
-          btn(t('tm.undoHere'), {size: 'sm', icon: 'undo', disabled: !x.ok, onClick: async (ev) => {
+          btn(t('tm.undoHere'), {size: 'sm', icon: 'undo', disabled: !x.ok, title: x.ok ? null : (x.marker ? t('tm.noBaseTip') : null), onClick: async (ev) => {
             const b = ev.currentTarget;
             const yes = await confirmDialog({
               title: t('tm.undoQ'), icon: 'undo', tone: 'warn', size: 'md',

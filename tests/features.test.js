@@ -403,6 +403,43 @@ describe('doctor', () => {
   });
 });
 
+describe('timemachine instant restore points (binlog markers)', () => {
+  const TM = () => lib('timemachine.js');
+  const write = (dir, name, meta, sql = true) => {
+    fs.mkdirSync(path.join(dir, name), { recursive: true });
+    fs.writeFileSync(path.join(dir, name, 'meta.json'), JSON.stringify(meta));
+    if (sql) fs.writeFileSync(path.join(dir, name, 'shop.sql'), '-- Dump completed');
+  };
+  const base = (at, file, pos, boot = 1000) => ({ database: 'shop', server: 's1', createdAt: at, snapshotAt: at, fingerprint: { boot }, binlog: { file, pos } });
+  const marker = (at, file, pos, boot = 1000) => ({ kind: 'marker', database: 'shop', server: 's1', createdAt: at, boot, binlog: { file, pos } });
+
+  it('binlog positions order by file number, then position', () => {
+    assert.equal(TM().binIndex('binlog.000012'), 12);
+    assert.ok(TM().cmpCoords({ file: 'binlog.000002', pos: 5 }, { file: 'binlog.000010', pos: 1 }) < 0);
+    assert.ok(TM().cmpCoords({ file: 'binlog.000002', pos: 50 }, { file: 'binlog.000002', pos: 7 }) > 0);
+    assert.equal(TM().cmpCoords({ file: 'b.000003', pos: 7 }, { file: 'b.000003', pos: 7 }), 0);
+  });
+
+  it('a marker uses the newest base before it, of the same server run, with no unlogged write in between', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-pitr-'));
+    try {
+      write(dir, '20261118-100000_auto', base('2026-11-18T10:00:00Z', 'binlog.000002', 100));
+      write(dir, '20261118-110000_auto', base('2026-11-18T11:00:00Z', 'binlog.000002', 900));
+      const m = marker('2026-11-18T10:30:00Z', 'binlog.000002', 500);
+      assert.equal(TM().baseForMarker(dir, m).name, '20261118-100000_auto', 'the later base is past the marker');
+      assert.equal(TM().baseForMarker(dir, marker('2026-11-18T12:00:00Z', 'binlog.000003', 1)).name, '20261118-110000_auto');
+      assert.equal(TM().baseForMarker(dir, Object.assign(m, { boot: 5000 })), null, 'the server restarted');
+      // an undo (not in the binlog) between the base and the marker
+      fs.writeFileSync(path.join(dir, 'unlogged.json'), JSON.stringify([Date.parse('2026-11-18T11:30:00Z')]));
+      assert.equal(TM().baseForMarker(dir, marker('2026-11-18T12:00:00Z', 'binlog.000003', 1)), null);
+      // ... and one after a marker, before a later copy with the same position
+      assert.equal(TM().baseForMarker(dir, marker('2026-11-18T10:30:00Z', 'binlog.000002', 500)).name, '20261118-100000_auto');
+      write(dir, '20261118-113100_auto', base('2026-11-18T11:31:00Z', 'binlog.000002', 500));
+      assert.equal(TM().baseForMarker(dir, marker('2026-11-18T11:20:00Z', 'binlog.000002', 500)).name, '20261118-100000_auto');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe('projects.buildPhpBat (DB Time Machine hook)', () => {
   const P = () => lib('projects.js');
   const php = { path: 'C:\\php\\8.3\\php.exe', iniRelocated: false };

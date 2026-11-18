@@ -49,6 +49,11 @@ async function main() {
   const j = r.json || {};
   // read-only command, nothing to migrate, empty database or turned off in Settings: say nothing
   if (j.skipped) return;
+  if (j.marker) {
+    say(`restore point foran ban gaya (${clock(j.marker.createdAt)}). Ghalti ho to card par "Time Machine" dabayein.`,
+      `restore point saved instantly (${clock(j.marker.createdAt)}). If something goes wrong, press "Time Machine" on the project card.`);
+    return;
+  }
   if (j.reused) {
     say(`database pichhle restore point (${clock(j.reused.createdAt)}) ke baad nahi badla, wahi kaafi hai.`,
       `the database has not changed since the restore point of ${clock(j.reused.createdAt)}, so that one still covers it.`);
