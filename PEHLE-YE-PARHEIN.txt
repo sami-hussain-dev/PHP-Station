@@ -202,7 +202,47 @@ PHP Station kya hai?
   - Sab backups: Settings ke "DB dump folder" ke andar devpanel-backups\.
 
 --------------------------------------------------------------------------
-16) Panel band karna, About
+16) AI agents (Claude Code, Cursor, Copilot, Codex)
+--------------------------------------------------------------------------
+  - Settings > "AI agents" me apna AI tool chunein, line copy karein:
+      Claude Code: terminal me aik dafa chalayein.
+      Cursor / VS Code / Codex / Claude Desktop: dikhayi gayi file me paste.
+  - Phir AI khud: errors parhta hai, pakri gayi email se OTP / link
+    uthata hai, dump() dekhta hai, DB ki har tabdeeli dekhta hai, aur
+    migrate:fresh jaise kaam se pehle restore point bana sakta hai.
+  - AI sirf wahi kar sakta hai jo ye panel kar sakta hai, aur sirf isi PC
+    par. Restore / undo / start / stop par AI tool pehle aap se poochta hai.
+
+--------------------------------------------------------------------------
+17) Upgrade Lab (kya project naye PHP par chalega?)
+--------------------------------------------------------------------------
+  - Project chalayein, card par ... > "Upgrade Lab". Naya PHP chunein.
+  - Ye dekhta hai: kaun se packages naya PHP support nahi karte, kaun si
+    extension band hai, kaun si file naye PHP par error / deprecation
+    deti hai, aur har page dono PHP par khol kar muqabla karta hai.
+  - Sirf GET pages. Logout / delete jaise pages chhor deta hai. Emails
+    Inbox me pakri jati hain. Project ki koi file nahi badalti.
+  - Login wale pages: browser se "Cookie" copy kar ke dialog me dein
+    (sirf us run ke liye, kahin save nahi hoti).
+
+--------------------------------------------------------------------------
+18) Security scan (live karne se pehle)
+--------------------------------------------------------------------------
+  - Card par ... > "Security scan":
+      Packages: composer audit (maloom kamzoriyan; packagist.org se poochta hai).
+      Code: vibe-security - leaked keys, SQL injection, XSS (isi PC par).
+      Public folder: .env, .git, phpinfo() ya backup files, APP_DEBUG.
+  - Pehli dafa vibe-security GitHub se aata hai (~30 second), phir cache se.
+
+--------------------------------------------------------------------------
+19) Live link ka QR code
+--------------------------------------------------------------------------
+  - Live link banne ke baad dialog me QR code aata hai. Client phone ke
+    camera se scan kare aur site khul jaye. Share strip par phone ka
+    button bhi yahi QR kholta hai.
+
+--------------------------------------------------------------------------
+20) Panel band karna, About
 --------------------------------------------------------------------------
   - PHP-Station-Stop.bat double-click karein, ya Settings >
     "Panel band karein (projects chalte rahenge)".

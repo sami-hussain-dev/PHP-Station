@@ -1815,7 +1815,7 @@
     const openView = () => {
       view = jobView(o);
       ctrl = openModal({
-        title: o.title || (w.job && bidi(w.job.title)) || t('jobs.job'), subtitle: o.subtitle, icon: o.icon || 'bolt', size: 'lg', body: view.root,
+        title: o.title || (w.job && bidi(w.job.title)) || t('jobs.job'), subtitle: o.subtitle, icon: o.icon || 'bolt', size: o.size || 'lg', body: view.root,
         actions: [{label: t('common.close'), value: null, autofocus: true}],
         onClose: () => { ctrl = null; view = null; w.listeners.delete(listener); }
       });
@@ -2626,6 +2626,9 @@
     const on = isOn(p);
     const laravel = !!(p.info && p.info.isLaravel);
     return [
+      {label: t('lab.menu'), icon: 'bolt', hint: t('common.new'), onClick: () => openUpgradeLab(p)},
+      {label: t('sec.menu'), icon: 'lock', hint: t('common.new'), onClick: () => openSecurityScan(p)},
+      'sep',
       {label: t('pma.projBtn'), icon: 'db', hint: 'phpMyAdmin', disabled: !p.dbServerId, title: p.dbServerId ? null : t('pma.noDbChosen'), onClick: () => openPma({projectId: p.id}, null)},
       {label: t('tm.menu'), icon: 'undo', hint: p.points && p.points.count ? String(p.points.count) : null, disabled: !p.dbServerId, title: p.dbServerId ? null : t('tm.needDb'), onClick: () => openTimeMachine(p)},
       p.share
@@ -3983,6 +3986,7 @@
     return h('div', {class: 'run-strip share-strip'},
       chip(t('share.live'), {kind: 'ok', dot: 'dot-ok pulse', cls: 'share-live'}),
       link, copyButton(sh.url, t('share.copy')),
+      btn(t('share.qr'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'phone', onClick: () => showShareResult(p, {url: sh.url, warnings: []})}),
       h('span', {class: 'run-meta', dataset: {since: sh.startedAt, tpl: 'proj.runningFor'}}, t('proj.runningFor', {d: sinceText(sh.startedAt)})),
       btn(t('share.stop'), {size: 'sm', kind: 'soft-danger', icon: 'stop', onClick: (ev) => stopShare(p, ev.currentTarget)}));
   }
@@ -4048,6 +4052,7 @@
       title: t('share.ready'), subtitle: p.name, icon: 'share', tone: 'ok', size: 'md',
       body: h('div', {class: 'stack'},
         h('div', {class: 'share-big'}, h('code', {class: 'ltr break'}, url), copyButton(url, t('share.copy'))),
+        qrCode(url),
         h('p', {class: 'muted'}, t('share.readyText')),
         warns.includes('VITE_HOT') ? callout('warn', t('share.viteTitle'), t('share.viteText')) : null,
         warns.includes('NO_HTTPS_FIX') ? callout('warn', null, t('share.noHttpsFix')) : null,
@@ -4058,6 +4063,292 @@
         {label: t('share.open'), kind: 'primary', icon: 'external', onClick: () => api('POST', '/api/open-share', {url}).then((x) => { if (!x.ok) window.open(url, '_blank', 'noopener'); })}
       ]
     });
+  }
+
+  /** The live link as a QR code (drawn here by qr.js; the link is not sent anywhere for it). */
+  function qrCode(text) {
+    const q = window.DP_QR && window.DP_QR.encode(text);
+    if (!q) return null;
+    const n = q.size + 8;
+    let d = '';
+    for (let y = 0; y < q.size; y++) for (let x = 0; x < q.size; x++) if (q.dark(x, y)) d += 'M' + (x + 4) + ' ' + (y + 4) + 'h1v1h-1z';
+    const svg = svgEl('svg', {viewBox: '0 0 ' + n + ' ' + n, class: 'qr-svg', role: 'img', 'aria-label': t('share.qrAria'), 'shape-rendering': 'crispEdges'});
+    svg.appendChild(svgEl('rect', {width: n, height: n, fill: '#fff'}));
+    svg.appendChild(svgEl('path', {d, fill: '#000'}));
+    return h('figure', {class: 'qr-box'}, svg, h('figcaption', {class: 'muted small'}, icon('phone'), t('share.qrHint')));
+  }
+
+  /* ===================== Upgrade Lab: will this project run on PHP X? ===================== */
+  function checkItem(o) {
+    const cb = h('input', {type: 'checkbox', checked: o.checked !== false, disabled: !!o.disabled, id: uid('ck')});
+    const el = h('label', {class: ['check-item', o.disabled && 'is-blocked'], for: cb.id},
+      cb, h('span', {class: 'check-icon'}, icon(o.icon || 'check')),
+      h('span', {class: 'check-main'}, h('span', {class: 'check-title'}, o.title), o.desc ? h('span', {class: 'check-desc'}, o.desc) : null));
+    return {cb, el};
+  }
+  function labProgress(job) {
+    const pr = job && job.progress;
+    if (!pr || !pr.phase) return null;
+    const label = hasT('lab.phase.' + pr.phase) ? t('lab.phase.' + pr.phase) : null;
+    const pct = pr.total ? (Number(pr.done) / Number(pr.total)) * 100 : null;
+    return {pct, label, text: pr.total ? pr.done + ' / ' + pr.total : ''};
+  }
+  async function openUpgradeLab(p0) {
+    const p = findProject(p0.id) || p0;
+    const r = await api('GET', '/api/projects/' + enc(p.id) + '/upgrade-lab');
+    if (!r.ok) return failToast(t('lab.title'), r);
+    const targets = arr(r.targets);
+    if (!targets.length) {
+      const go = await confirmDialog({title: t('lab.title'), icon: 'bolt', size: 'sm', message: t('lab.noOther', {v: r.current ? r.current.version : '?'}), confirmLabel: t('lab.getPhp'), confirmIcon: 'download'});
+      if (go) goPage('setup');
+      return;
+    }
+    const pickDefault = targets.find((x) => x.newer) || targets[0];
+    const sel = h('select', {class: 'select', id: uid('lab')}, targets.map((x) => h('option', {value: x.path, selected: x === pickDefault},
+      'PHP ' + x.version + (x.newer ? '' : ' ' + t('lab.older')) + (x.satisfies === false ? ' · ' + t('lab.outsideConstraint') : ''))));
+    const running = p.status === 'running';
+    const ckPk = checkItem({icon: 'download', title: t('lab.ckPackages'), desc: r.hasLock ? t('lab.ckPackagesD') : t('lab.ckPackagesNoLock')});
+    const ckLint = checkItem({icon: 'code', title: t('lab.ckLint'), desc: t('lab.ckLintD')});
+    const ckCrawl = checkItem({icon: 'globe', title: t('lab.ckCrawl'), desc: running ? (r.isLaravel ? t('lab.ckCrawlLaravel') : t('lab.ckCrawlLinks')) : t('lab.ckCrawlNotRunning'), checked: running});
+    const ckPoint = checkItem({icon: 'undo', title: t('lab.ckPoint'), desc: r.hasDb ? t('lab.ckPointD') : t('lab.ckPointNoDb'), checked: !!r.hasDb, disabled: !r.hasDb});
+    const cookie = h('textarea', {class: 'input mono', rows: 2, placeholder: 'laravel_session=…; XSRF-TOKEN=…', spellcheck: 'false', autocomplete: 'off', dir: 'ltr'});
+    const maxRoutes = h('input', {class: 'input mono', type: 'number', min: 5, max: 400, value: '120'});
+    const err = h('div', {class: 'field-error', 'aria-live': 'polite'});
+    const body = h('div', {class: 'stack'},
+      h('p', {class: 'muted'}, t('lab.intro', {v: r.current ? r.current.version : '?'})),
+      field(t('lab.target'), sel),
+      h('div', {class: 'check-list'}, ckPk.el, ckLint.el, ckCrawl.el, ckPoint.el),
+      h('details', {class: 'lab-more'}, h('summary', null, t('lab.moreOpts')),
+        h('div', {class: 'stack'},
+          field(t('lab.cookie'), cookie, null, t('lab.cookieHint')),
+          field(t('lab.maxRoutes'), maxRoutes))),
+      r.configCached ? callout('warn', null, t('lab.configCached')) : null,
+      callout('info', null, t('lab.safe')),
+      err);
+    openModal({
+      title: t('lab.title'), subtitle: p.name, icon: 'bolt', size: 'md', body,
+      actions: [{label: t('common.cancel'), value: null}, {id: 'go', label: t('lab.run'), kind: 'primary', icon: 'play', onClick: async (m, b) => {
+        err.textContent = '';
+        setBusy(b, true);
+        const res = await api('POST', '/api/projects/' + enc(p.id) + '/upgrade-lab', {
+          phpPath: sel.value, cookie: cookie.value.trim() || null, maxRoutes: Number(maxRoutes.value) || 120,
+          packages: ckPk.cb.checked, lint: ckLint.cb.checked, crawl: ckCrawl.cb.checked, restorePoint: ckPoint.cb.checked
+        });
+        setBusy(b, false);
+        if (!res.ok || !res.jobId) { err.textContent = errorText(res); return; }
+        m.close();
+        showJob(res.jobId, {title: t('lab.title') + ' — ' + p.name, icon: 'bolt', size: 'xl', progress: labProgress,
+          renderResult: (job) => (job.status === 'done' && job.result ? labReport(job.result, p) : null)});
+      }}]
+    });
+  }
+  function absIn(p, rel) { return rel ? String(p.path).replace(/[\\/]+$/, '') + '\\' + String(rel).replace(/\//g, '\\') : null; }
+  function verdictBanner(kind, title, sub, chips) {
+    const ic = {ready: 'check-circle', ok: 'check-circle', warnings: 'alert', warn: 'alert', blocked: 'alert-circle', bad: 'alert-circle'}[kind] || 'info';
+    return h('div', {class: ['verdict', 'is-' + kind]}, h('div', {class: 'verdict-icon'}, icon(ic)),
+      h('div', {class: 'verdict-text'}, h('div', {class: 'verdict-title'}, title), sub ? h('div', {class: 'verdict-sub'}, sub) : null,
+        chips && chips.length ? h('div', {class: 'verdict-chips'}, chips) : null));
+  }
+  function reportSection(iconName, title, count, ...content) {
+    return h('section', {class: 'rep-sec'}, h('h3', {class: 'rep-h'}, icon(iconName), h('span', null, title), count != null ? h('span', {class: 'rep-count'}, String(count)) : null), ...content);
+  }
+  function labReport(res, p) {
+    const v = res.verdict || 'ready';
+    const cr = res.crawl;
+    const chips = [
+      chip(t('labr.blockers', {n: res.blockers || 0}), {kind: res.blockers ? 'bad' : 'ok'}),
+      chip(t('labr.warnings', {n: res.warnings || 0}), {kind: res.warnings ? 'warn' : 'ok'})
+    ];
+    const parts = [verdictBanner(v, t('labr.v.' + v, {version: res.target.version}), 'PHP ' + res.current.version + '  →  PHP ' + res.target.version, chips)];
+    const pk = res.packages;
+    if (pk) {
+      const rows = [];
+      if (pk.constraintOk === false) rows.push(callout('bad', null, t('labr.constraint', {c: pk.constraint, version: res.target.version})));
+      if (!pk.lock) rows.push(callout('info', null, t('lab.ckPackagesNoLock')));
+      if (arr(pk.incompatible).length) {
+        rows.push(h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
+          h('thead', null, h('tr', null, h('th', null, t('labr.package')), h('th', null, t('labr.version')), h('th', null, t('labr.needsPhp')))),
+          h('tbody', null, pk.incompatible.map((x) => h('tr', null, h('td', {class: 'mono'}, x.name, x.dev ? h('span', {class: 'muted small'}, ' (dev)') : null), h('td', {class: 'mono'}, x.version), h('td', {class: 'mono'}, x.constraint)))))));
+        rows.push(h('p', {class: 'muted small'}, t('labr.packagesHow')));
+      }
+      for (const x of arr(pk.missingExt)) rows.push(callout('warn', null, t('labr.missingExt', {ext: x.name, version: res.target.version})));
+      if (!rows.length) rows.push(h('p', {class: 'rep-ok'}, icon('check-circle'), t('labr.packagesOk')));
+      parts.push(reportSection('download', t('labr.packages'), arr(pk.incompatible).length + arr(pk.missingExt).length + (pk.constraintOk === false ? 1 : 0), ...rows));
+    }
+    const ln = res.lint;
+    if (ln) {
+      const rows = [];
+      for (const e of arr(ln.errors).slice(0, 100)) {
+        rows.push(h('div', {class: 'rep-item is-bad'}, fileLink(absIn(p, e.file), e.line, p.path), h('div', {class: 'rep-msg'}, e.message),
+          e.alsoOnCurrent ? h('div', {class: 'muted small'}, t('labr.alsoNow')) : null));
+      }
+      // deprecations: one row per message, with where it happens
+      const groups = new Map();
+      for (const d of arr(ln.deprecations)) {
+        const key = String(d.message).replace(/\$\w+/g, '$…').replace(/"[^"]*"/g, '"…"');
+        if (!groups.has(key)) groups.set(key, {message: d.message, list: []});
+        groups.get(key).list.push(d);
+      }
+      for (const g of [...groups.values()].sort((a, b) => b.list.length - a.list.length).slice(0, 40)) {
+        rows.push(h('div', {class: 'rep-item is-warn'}, h('div', {class: 'rep-msg'}, chip('×' + g.list.length, {kind: 'warn', mono: true}), ' ', g.message),
+          h('div', {class: 'rep-files'}, g.list.slice(0, 4).map((d) => fileLink(absIn(p, d.file), d.line, p.path)), g.list.length > 4 ? h('span', {class: 'muted small'}, t('labr.more', {n: g.list.length - 4})) : null)));
+      }
+      if (!rows.length) rows.push(h('p', {class: 'rep-ok'}, icon('check-circle'), t('labr.codeOk', {n: ln.files})));
+      parts.push(reportSection('code', t('labr.code', {n: ln.files}), arr(ln.errors).length + arr(ln.deprecations).length, ...rows));
+    }
+    if (cr) {
+      const rows = [];
+      if (cr.note === 'NOT_RUNNING') rows.push(callout('warn', null, t('lab.ckCrawlNotRunning')));
+      else {
+        const c = cr.counts || {};
+        rows.push(h('div', {class: 'verdict-chips'}, ['broken', 'changed', 'deprecated', 'bothFail', 'same'].map((k) =>
+          chip(t('labr.c.' + k, {n: c[k] || 0}), {kind: k === 'broken' ? (c[k] ? 'bad' : null) : k === 'same' ? 'ok' : (c[k] ? 'warn' : null)}))));
+        const shown = arr(cr.routes).filter((x) => x.verdict !== 'same').slice(0, 200);
+        const status = (s) => h('span', {class: ['mono', s.status === 0 || s.status >= 500 ? 'tx-bad' : s.status >= 400 ? 'tx-warn' : null]}, s.status === 0 ? '—' : String(s.status), h('span', {class: 'muted small'}, ' ' + s.ms + ' ms'));
+        const why = (x) => {
+          const e = arr(x.b.log).find((l) => !l.deprecation) || arr(x.b.markers)[0] || arr(x.b.phpErrors)[0] || arr(x.b.log)[0];
+          if (!e) return x.b.location !== x.a.location ? h('div', {class: 'muted small mono'}, '→ ' + (x.b.location || '-')) : null;
+          const lvl = String(e.level || '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+          return h('div', {class: 'stack-tight'}, h('div', {class: 'rep-msg small'}, (lvl ? lvl + ': ' : '') + e.message), e.file ? fileLink(e.file, e.line, p.path) : null);
+        };
+        if (shown.length) {
+          rows.push(h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
+            h('thead', null, h('tr', null, h('th', null, t('labr.page')), h('th', null, t('labr.verdict')), h('th', null, 'PHP ' + res.current.version), h('th', null, 'PHP ' + res.target.version))),
+            h('tbody', null, shown.map((x) => h('tr', null,
+              h('td', null, h('div', {class: 'mono', dir: 'ltr'}, x.path), why(x)),
+              h('td', {class: 'shrink'}, chip(t('labr.c1.' + x.verdict), {kind: x.verdict === 'broken' ? 'bad' : 'warn'})),
+              h('td', {class: 'shrink'}, status(x.a)), h('td', {class: 'shrink'}, status(x.b))))))));
+        } else rows.push(h('p', {class: 'rep-ok'}, icon('check-circle'), t('labr.pagesOk', {n: arr(cr.routes).length})));
+        rows.push(h('p', {class: 'muted small'}, cr.source === 'routes' ? t('labr.fromRoutes') : t('labr.fromLinks')));
+      }
+      parts.push(reportSection('globe', t('labr.pages'), cr.counts ? (cr.counts.broken + cr.counts.changed + cr.counts.deprecated) : null, ...rows));
+    }
+    return h('div', {class: 'stack report'}, parts);
+  }
+
+  /* ===================== Security scan ===================== */
+  const SEV_KIND = {critical: 'bad', high: 'bad', medium: 'warn', low: null, unknown: null};
+  async function openSecurityScan(p0) {
+    const p = findProject(p0.id) || p0;
+    const r = await api('GET', '/api/projects/' + enc(p.id) + '/security-scan');
+    if (!r.ok) return failToast(t('sec.title'), r);
+    const ckAudit = checkItem({icon: 'download', title: t('sec.ckAudit'), desc: r.hasLock ? t('sec.ckAuditD') : t('sec.ckAuditNoLock'), checked: !!r.hasLock, disabled: !r.hasLock});
+    const ckCode = checkItem({icon: 'code', title: t('sec.ckCode'), desc: t('sec.ckCodeD')});
+    const ckFetch = !r.vibeInstalled ? checkItem({icon: 'branch', title: t('sec.ckFetch'), desc: r.npx ? t('sec.ckFetchD') : t('sec.noNpx'), checked: !!r.npx, disabled: !r.npx}) : null;
+    const err = h('div', {class: 'field-error', 'aria-live': 'polite'});
+    openModal({
+      title: t('sec.title'), subtitle: p.name, icon: 'lock', size: 'md',
+      body: h('div', {class: 'stack'}, h('p', {class: 'muted'}, t('sec.intro')),
+        h('div', {class: 'check-list'}, ckAudit.el, ckCode.el, ckFetch ? ckFetch.el : null),
+        callout('info', null, t('sec.private')), err),
+      actions: [{label: t('common.cancel'), value: null}, {id: 'go', label: t('sec.run'), kind: 'primary', icon: 'play', onClick: async (m, b) => {
+        setBusy(b, true);
+        const res = await api('POST', '/api/projects/' + enc(p.id) + '/security-scan', {audit: ckAudit.cb.checked, code: ckCode.cb.checked, allowFetch: !!(ckFetch && ckFetch.cb.checked)});
+        setBusy(b, false);
+        if (!res.ok || !res.jobId) { err.textContent = errorText(res); return; }
+        m.close();
+        showJob(res.jobId, {title: t('sec.title') + ' — ' + p.name, icon: 'lock', size: 'xl',
+          progress: (job) => (job && job.progress && job.progress.phase ? {pct: null, label: t('sec.phase.' + job.progress.phase), text: ''} : null),
+          renderResult: (job) => (job.status === 'done' && job.result ? secReport(job.result, p) : null)});
+      }}]
+    });
+  }
+  function secReport(res, p) {
+    const sevChip = (s) => chip(s, {kind: SEV_KIND[s] || null, mono: true});
+    const parts = [];
+    const code = res.code || {};
+    const sum = code.summary || {};
+    const chips = [];
+    if (code.score != null) chips.push(chip(t('secr.score', {n: code.score}) + (code.grade ? ' · ' + code.grade : ''), {kind: code.score >= 80 ? 'ok' : code.score >= 50 ? 'warn' : 'bad'}));
+    for (const s of ['critical', 'high', 'medium', 'low']) if (sum[s]) chips.push(chip(s + ' ' + sum[s], {kind: SEV_KIND[s]}));
+    parts.push(verdictBanner(res.serious ? 'bad' : 'ok', res.serious ? t('secr.serious', {n: res.serious}) : t('secr.clean'), t('secr.sub'), chips));
+    // serving mistakes
+    const local = arr(res.local);
+    parts.push(reportSection('folder', t('secr.local'), local.length,
+      local.length ? local.map((x) => h('div', {class: ['rep-item', SEV_KIND[x.severity] === 'bad' ? 'is-bad' : 'is-warn']},
+        h('div', {class: 'rep-msg'}, sevChip(x.severity), ' ', h('b', null, t('secl.' + x.id)), x.file ? h('span', {class: 'mono small'}, '  ' + x.file) : null),
+        h('div', {class: 'muted small'}, t('secl.' + x.id + '.fix')))) : h('p', {class: 'rep-ok'}, icon('check-circle'), t('secr.localOk'))));
+    // code (before the packages: it is what the developer wrote and can fix right away)
+    if (res.code) {
+      let content;
+      if (code.skipped) content = callout('info', null, t('sec.vibeMissingUi'));
+      else if (code.error) content = callout('warn', null, code.error);
+      else {
+        const useUr = lang !== 'en';
+        const f = arr(code.findings);
+        content = [
+          f.length ? f.slice(0, 150).map((x) => h('div', {class: ['rep-item', SEV_KIND[x.severity] === 'bad' ? 'is-bad' : SEV_KIND[x.severity] === 'warn' ? 'is-warn' : null]},
+            h('div', {class: 'rep-msg'}, sevChip(x.severity), ' ', h('b', null, x.title)),
+            x.file ? fileLink(absIn(p, x.file), x.line, p.path) : null,
+            x.snippet ? h('pre', {class: 'rep-snippet', dir: 'ltr'}, x.snippet) : null,
+            h('div', {class: 'muted small'}, useUr && x.ur ? x.ur : [x.why, x.fix].filter(Boolean).join(' ')))) : h('p', {class: 'rep-ok'}, icon('check-circle'), t('secr.codeOk')),
+          code.total > f.length ? h('p', {class: 'muted small'}, t('labr.more', {n: code.total - f.length})) : null,
+          h('p', {class: 'muted small'}, t('secr.byVibe', {v: code.version || ''}))
+        ];
+      }
+      parts.push(reportSection('code', t('secr.code'), code.total != null ? code.total : null, content));
+    }
+    // packages: per package, the worst advisories first; a long list folds after 10 rows
+    const au = res.audit;
+    if (au) {
+      let content;
+      if (au.skipped) content = callout('info', null, t('secr.auditSkip.' + au.skipped));
+      else if (au.error) content = callout('warn', null, au.error);
+      else {
+        const adv = arr(au.advisories);
+        const table = (list) => h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
+          h('thead', null, h('tr', null, h('th', null, t('secr.sev')), h('th', null, t('labr.package')), h('th', null, t('secr.issue')), h('th', null, t('secr.affected')))),
+          h('tbody', null, list.map((a) => h('tr', null, h('td', {class: 'shrink'}, sevChip(a.severity)), h('td', {class: 'mono'}, a.package),
+            h('td', null, a.link && safeUrl(a.link) ? h('a', {href: a.link, target: '_blank', rel: 'noopener noreferrer'}, a.title) : a.title, a.cve ? h('div', {class: 'muted small mono'}, a.cve) : null),
+            h('td', {class: 'mono small'}, String(a.affected || '').replace(/\|/g, ' | ')))))));
+        content = [
+          adv.length ? table(adv.slice(0, 10)) : h('p', {class: 'rep-ok'}, icon('check-circle'), t('secr.auditOk')),
+          adv.length > 10 ? h('details', {class: 'lab-more'}, h('summary', null, t('secr.showAll', {n: adv.length})), table(adv.slice(10, 300))) : null,
+          arr(au.abandoned).length ? callout('warn', t('secr.abandoned'), au.abandoned.map((x) => x.name + (x.replacement ? ' → ' + x.replacement : '')).join(', ')) : null,
+          adv.length ? h('p', {class: 'muted small'}, t('secr.auditHow')) : null
+        ];
+      }
+      parts.push(reportSection('download', t('secr.packages'), au.advisories ? au.advisories.length : null, content));
+    }
+    return h('div', {class: 'stack report'}, parts);
+  }
+
+  /* ===================== AI agents (MCP) ===================== */
+  const AI_CLIENTS = ['claudeCode', 'cursor', 'vscode', 'codex', 'claudeDesktop'];
+  function aiPanel() {
+    const out = h('div', {class: 'stack'}, h('div', {class: 'row muted'}, spinner(), t('common.loading')));
+    api('GET', '/api/mcp/config').then((r) => {
+      if (!r.ok) { out.replaceChildren(callout('bad', null, errorText(r))); return; }
+      let cur = lsGet('devpanel.aiClient') || 'claudeCode';
+      if (!AI_CLIENTS.includes(cur)) cur = 'claudeCode';
+      const code = h('pre', {class: 'ai-code', dir: 'ltr'});
+      const where = h('div', {class: 'field-hint'});
+      const copy = h('span');
+      const seg = h('div', {class: 'seg seg-wrap', role: 'group', 'aria-label': t('ai.client')});
+      const show = () => {
+        const text = r.configs[cur] || '';
+        code.textContent = text;
+        where.textContent = t('ai.where.' + cur);
+        copy.replaceChildren(btn(t('ai.copy'), {size: 'sm', icon: 'copy', onClick: async () => { if (await copyText(text)) toast('success', t('copy.done'), t('ai.pasteNow')); }}));
+        for (const b of seg.children) b.setAttribute('aria-pressed', String(b.dataset.client === cur));
+      };
+      for (const c of AI_CLIENTS) {
+        const b = h('button', {type: 'button', class: 'seg-btn', dataset: {client: c}}, t('ai.c.' + c));
+        b.addEventListener('click', () => { cur = c; lsSet('devpanel.aiClient', c); show(); });
+        seg.appendChild(b);
+      }
+      show();
+      out.replaceChildren(
+        h('p', null, t('ai.intro')),
+        seg, code, h('div', {class: 'row'}, copy, where),
+        h('div', {class: 'field'}, h('span', {class: 'field-label'}, t('ai.tools', {n: arr(r.tools).length})),
+          h('div', {class: 'ai-tools'}, arr(r.tools).map((x) => chip(x.name, {mono: true, icon: x.readOnly ? 'eye' : 'pencil', title: (x.title || '') + (x.readOnly ? '' : ' · ' + t('ai.changes'))})))),
+        callout('info', null, t('ai.try')),
+        callout('warn', null, t('ai.safety')));
+    });
+    return h('section', {class: 'panel ai-panel', 'aria-label': t('ai.title')},
+      h('div', {class: 'panel-head'}, h('h2', {class: 'panel-title'}, icon('sparkle'), t('ai.title')), h('span', {class: 'panel-sub'}, 'MCP')),
+      h('div', {class: 'panel-body stack'}, out));
   }
 
   /* ===================== Shift from XAMPP / Laragon / WAMP ===================== */
@@ -6872,7 +7163,7 @@
         h('div', {class: 'row'}, stopBtn, h('span', {class: 'muted small'}, t('st.stopHint')))));
     root.append(h('div', {class: 'settings-grid'},
       h('div', {class: 'settings-col'}, portsPanel, dbAutoPanel, safetyPanel, lookPanel, aboutPanel(), panelPanel),
-      h('div', {class: 'settings-col'}, foldersPanel)), SE.bar);
+      h('div', {class: 'settings-col'}, aiPanel(), foldersPanel)), SE.bar);
     fillSettings(S.state.settings);
   }
   /** About: version, who built it (link opens in a new window / the default browser), license. Nothing more is claimed. */

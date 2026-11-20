@@ -40,6 +40,9 @@ const dumps = require('./lib/dumps');
 const devlogs = require('./lib/devlogs');
 const devtools = require('./lib/devtools');
 const gitclone = require('./lib/gitclone');
+const upgradelab = require('./lib/upgradelab');
+const secscan = require('./lib/secscan');
+const mcp = require('./lib/mcp');
 const i18n = require('./lib/i18n');
 
 const { AppError } = util;
@@ -48,10 +51,33 @@ const TOOL_DIR = __dirname;
 const PACKAGE = util.readJson(path.join(TOOL_DIR, 'package.json'), {}) || {};
 const VERSION = PACKAGE.version || '1.1.0';
 const PUBLIC_DIR = path.join(TOOL_DIR, 'public');
+
+/**
+ * Newest change time of the server code (server.js, package.json, lib/*.js).
+ * The page files are read from disk on every request, but the server code only loads at start.
+ * When the code on disk is newer than the running panel, the page can call an API that this
+ * process does not have yet. Comparing the two turns that into "restart PHP Station".
+ */
+function codeStamp() {
+  const files = [path.join(TOOL_DIR, 'server.js'), path.join(TOOL_DIR, 'package.json')];
+  try {
+    for (const f of fs.readdirSync(path.join(TOOL_DIR, 'lib'))) {
+      if (f.endsWith('.js')) files.push(path.join(TOOL_DIR, 'lib', f));
+    }
+  } catch { /* no lib folder: the files above are enough */ }
+  let newest = 0;
+  for (const f of files) {
+    try { newest = Math.max(newest, fs.statSync(f).mtimeMs); } catch { /* removed */ }
+  }
+  return newest;
+}
+const CODE_STAMP = codeStamp();
+
 const STATIC = {
   '/app.css': { file: 'app.css', type: 'text/css; charset=utf-8' },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/i18n.js': { file: 'i18n.js', type: 'text/javascript; charset=utf-8' },
+  '/qr.js': { file: 'qr.js', type: 'text/javascript; charset=utf-8' },
 };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const BROWSERS = [
@@ -499,7 +525,9 @@ async function handle(ctx, req, res) {
   let out;
   if (!route) {
     status = 404;
-    out = { ok: false, code: 'NOT_FOUND', error: tr('err.apiNotFound') };
+    out = codeStamp() > CODE_STAMP
+      ? { ok: false, code: 'PANEL_OUTDATED', error: tr('err.panelOutdated') }
+      : { ok: false, code: 'NOT_FOUND', error: tr('err.apiNotFound') };
   } else {
     try {
       out = await route.fn(ctx, { params: route.params, body, query: url.searchParams, res });
@@ -821,6 +849,40 @@ route('POST', '/api/open-share', (ctx, { body }) => {
   if (!active || !/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url)) throw new AppError('URL_NOT_ALLOWED', tr('err.openUrlNotAllowed'), 403);
   openInDefaultBrowser(url);
   return {};
+});
+
+// ------------------------------------------------------------------------------------------ Upgrade Lab (will it run on PHP X?)
+route('GET', '/api/projects/:id/upgrade-lab', (ctx, { params }) => upgradelab.info(ctx, params.id));
+route('POST', '/api/projects/:id/upgrade-lab', (ctx, { params, body }) => {
+  const p = projects.getProject(ctx, params.id);
+  if (jobs.findRunning('upgrade-lab', (j) => j.projectId === p.id)) throw new AppError('BUSY', tr('lab.busy'), 409);
+  const opts = {
+    phpPath: String(body.phpPath || ''), cookie: body.cookie, maxRoutes: body.maxRoutes,
+    packages: body.packages !== false, lint: body.lint !== false, crawl: body.crawl !== false, restorePoint: body.restorePoint !== false,
+  };
+  upgradelab.cleanCookie(opts.cookie); // a bad cookie fails here, before the job starts
+  const target = runtimes.getCache(ctx).php.find((r) => r.ok && util.samePath(r.path, opts.phpPath));
+  if (!target) throw new AppError('BAD_INPUT', tr('lab.noTarget'), 400);
+  const jobId = jobs.createJob('upgrade-lab', tr('job.upgradeLab', { name: p.name, version: target.version }), (log, job) => upgradelab.runJob(ctx, p.id, opts, log, job));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+
+// ------------------------------------------------------------------------------------------ Security scan
+route('GET', '/api/projects/:id/security-scan', (ctx, { params }) => secscan.info(ctx, params.id));
+route('POST', '/api/projects/:id/security-scan', (ctx, { params, body }) => {
+  const p = projects.getProject(ctx, params.id);
+  if (jobs.findRunning('security-scan', (j) => j.projectId === p.id)) throw new AppError('BUSY', tr('sec.busy'), 409);
+  const opts = { audit: body.audit !== false, code: body.code !== false, allowFetch: body.allowFetch === true };
+  const jobId = jobs.createJob('security-scan', tr('job.securityScan', { name: p.name }), (log, job) => secscan.runJob(ctx, p.id, opts, log, job));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+
+// ------------------------------------------------------------------------------------------ AI agents (MCP)
+route('GET', '/api/mcp/config', () => {
+  const script = path.join(TOOL_DIR, 'tools', 'mcp.js');
+  return { script, node: process.execPath, configs: mcp.clientConfigs({ node: process.execPath, script }), tools: mcp.TOOLS.map((t) => ({ name: t.name, title: t.title, readOnly: !!t.annotations.readOnlyHint })) };
 });
 
 // ------------------------------------------------------------------------------------------ shift from XAMPP / Laragon

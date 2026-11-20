@@ -12,6 +12,10 @@ Key facts:
 - DB Time Machine: lists every INSERT/UPDATE/DELETE of a project database (MariaDB row-based binlog) and undoes one action with mariadb-binlog --flashback; restore points of the whole database are saved automatically before php artisan migrate*/db:* and can be restored with one click.
 - Open from GitHub: paste a GitHub/GitLab/Bitbucket link or owner/repo; the repository is cloned and set up (right PHP, composer install, .env, APP_KEY, database, migrations, storage:link) and started. A phpstation.json file in a repository pins PHP, extensions, MariaDB version and setup steps for a team.
 - Shift from XAMPP/Laragon: imports htdocs/www projects and Apache/nginx virtual hosts with the PHP and DB server they used, without copying or changing anything. Live share link: a public https://*.trycloudflare.com address for a running project (Cloudflare quick tunnel, no account). Fast server: static files served directly and PHP spread over several php -S workers per project.
+- AI agents (MCP): `node tools/mcp.js` is a stdio Model Context Protocol server for Claude Code, Cursor, VS Code Copilot, Codex and Claude Desktop. 14 tools over the panel's own API: list_projects, project_errors, project_log, list_mail, read_mail (links and OTP-like codes), list_dumps, db_history, undo_db_action, list_restore_points, create_restore_point, restore_database, start_project, stop_project, doctor. The project is picked from the agent's working folder. Settings > AI agents shows the config line for each tool.
+- Upgrade Lab: tests a project on another installed PHP version without changing it: composer.lock packages whose php constraint excludes the target, missing ext-* extensions, every app file linted with the target PHP (deprecations included), and every GET page (route:list or crawled links) opened on the running project and on a temporary server with the target PHP, compared by status, PHP errors in the page and new log lines. Risky-sounding routes (logout, delete, reset ...) are skipped.
+- Security scan: composer audit (known CVEs, abandoned packages), a code scan with vibe-security (leaked keys masked, SQL injection, XSS, open endpoints), and serving mistakes (APP_DEBUG in production, empty APP_KEY, .env/.git/phpinfo()/backup files in the public folder).
+- Live share link QR code: drawn in the page by a built-in encoder; the link is not sent to any QR service.
 - Security: listens on 127.0.0.1 only, Host/Origin checks, a per-start API token, strict CSP; DB passwords are never stored or logged.
 - UI languages: English, Roman Urdu, Urdu (RTL). Themes: dark (black) and light (silver).
 - Author: Sami Hussain (x8code, https://x8code.com). License: MIT.
@@ -24,7 +28,7 @@ Key facts:
 
 ## Source
 - [server.js](https://github.com/sami-hussain-dev/PHP-Station/blob/master/server.js): CLI (--launch/--serve/--stop) and the local HTTP API
-- [lib/](https://github.com/sami-hussain-dev/PHP-Station/tree/master/lib): projects, runtimes, DB servers, backups, repair, installer, wizard, phpMyAdmin, shutdown guard
+- [lib/](https://github.com/sami-hussain-dev/PHP-Station/tree/master/lib): projects, runtimes, DB servers, backups, repair, installer, wizard, phpMyAdmin, shutdown guard, MCP (mcp.js), Upgrade Lab (upgradelab.js), security scan (secscan.js)
 - [public/](https://github.com/sami-hussain-dev/PHP-Station/tree/master/public): vanilla-JS single-page UI (no framework, no build step)
 
 ## Optional
