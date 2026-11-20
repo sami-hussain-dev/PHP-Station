@@ -242,7 +242,22 @@ PHP Station kya hai?
     button bhi yahi QR kholta hai.
 
 --------------------------------------------------------------------------
-20) Panel band karna, About
+20) Free AI aur "AI se theek karein"
+--------------------------------------------------------------------------
+  - Sidebar > AI > "AI accounts": Gemini, Groq, OpenRouter, Mistral,
+    Cerebras, GitHub Models ki apni FREE key paste karein (card par link hai).
+    Ollama (isi PC par) ko key nahi chahiye.
+  - Aik AI ki had khatam ho to agla AI wahin se baat aage barhata hai.
+  - Apna paid account (OpenAI, Anthropic ...) "Paid account jorein" se;
+    laga ho to pehle wahi chalta hai. Keys Windows encryption me rehti hain.
+  - Har error ke saath "AI se theek karein": pehle tabdeeli (diff) dikhti
+    hai, "Lagao aur check karo" par backup, tabdeeli, php -l aur page check.
+    Fail ho to files wapas. "Undo" se kabhi bhi pehle jaisa.
+  - Asli data wala project: "Sirf local AI" tick karein - code sirf Ollama
+    ko jayega, kisi cloud AI ko nahi.
+
+--------------------------------------------------------------------------
+21) Panel band karna, About
 --------------------------------------------------------------------------
   - PHP-Station-Stop.bat double-click karein, ya Settings >
     "Panel band karein (projects chalte rahenge)".
