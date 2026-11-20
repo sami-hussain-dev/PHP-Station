@@ -8,6 +8,7 @@
 
 **Every project on its own PHP version, Composer and MariaDB — side by side.**<br>
 **Catch every email, `dump()` and error in one inbox. Undo a single bad query.**<br>
+**Let your AI agent see it all (MCP). Know before you upgrade PHP or go live.**<br>
 Free, open source, zero dependencies.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-2ea44f.svg)](LICENSE)
@@ -17,7 +18,7 @@ Free, open source, zero dependencies.
 [![PHP 7.4 – 8.5](https://img.shields.io/badge/PHP-7.4%20%E2%80%93%208.5-777BB4.svg?logo=php&logoColor=white)](#features)
 [![MariaDB 10.4 – 12](https://img.shields.io/badge/MariaDB-10.4%20%E2%80%93%2012.x-003545.svg?logo=mariadb&logoColor=white)](#features)
 
-[Quick start](#quick-start) · [Features](#features) · [Compared](#php-station-vs-xampp-vs-laragon) · [FAQ](#faq) · [Roman Urdu](#roman-urdu)
+[Quick start](#quick-start) · [Features](#features) · [AI agents](#-ai-agents-claude-code-cursor-copilot-codex) · [Upgrade Lab](#-upgrade-lab-will-it-run-on-php-85) · [Security scan](#-security-scan-before-you-go-live) · [Compared](#php-station-vs-xampp-vs-laragon) · [FAQ](#faq) · [Roman Urdu](#roman-urdu)
 
 <img src="docs/assets/demo.gif" alt="PHP Station demo: projects switched on with different PHP versions at the same time, then Open from GitHub, the mail catcher, the dump() viewer, grouped laravel.log errors, the DB Time Machine, restore points, several MariaDB servers and one-click repair" width="100%">
 
@@ -34,6 +35,9 @@ Free, open source, zero dependencies.
 | A wrong `DELETE` or `migrate:fresh` | The **DB Time Machine** undoes that one query, or brings the whole database back. |
 | "MySQL shutdown unexpectedly" in XAMPP | Clean shutdown on Windows sign-out, daily backups and **one-click repair**. |
 | Setting up a teammate's repo takes an afternoon | **Paste a GitHub link**: clone, right PHP, `composer install`, `.env`, database, migrations, started. |
+| Your AI agent can't see the OTP email, the `dd()` or `laravel.log`, and might wipe the database | **PHP Station speaks MCP.** Claude Code, Cursor, Copilot and Codex read the Inbox, save a restore point first and undo a bad write. |
+| "Will this project still work on PHP 8.5?" | The **Upgrade Lab** runs the same project on both PHP versions and shows every package, file and page that breaks. |
+| A leaked key or a `backup.sql` in `public/` goes live | The **Security scan** checks packages (`composer audit`), the code and the public folder before you deploy. |
 
 ## Quick start
 
@@ -86,6 +90,58 @@ Projects started by PHP Station get a tiny `auto_prepend_file`. While the panel 
 Other apps can use the catcher too: set `MAIL_HOST=127.0.0.1` and `MAIL_PORT=1025`. Ports, on/off switches and the editor are on the Inbox page.
 </details>
 
+### 🤖 AI agents: Claude Code, Cursor, Copilot, Codex
+
+<img src="docs/screenshots/26-ai-agents.png" alt="Settings, AI agents: the one-line command for Claude Code, tabs for Cursor, VS Code, Codex and Claude Desktop, and the 14 tools the AI gets" width="46%" align="right">
+
+PHP Station is an **MCP server**, so your AI coding agent can see what your app really did, on this PC, without copying logs into the chat:
+
+- **Errors** from `laravel.log`, grouped, with your own stack frames;
+- **Caught emails**: the agent reads the OTP code or the password-reset link and finishes the flow it is testing;
+- **`dump()` output**, the PHP server log and a health check;
+- **Every INSERT / UPDATE / DELETE**, with **undo for one write**;
+- **Restore points**: the agent saves one before `migrate:fresh` or a big `UPDATE`, and can go back.
+
+Connect it once (**Settings → AI agents** shows the line for each tool):
+
+```bash
+claude mcp add php-station --scope user -- node "C:\PHP-Station\tools\mcp.js"
+```
+
+Then just ask: *"Test the sign-up form, take the code from the OTP email to verify, and fix any new error in laravel.log."*
+
+The agent can only do what the panel can, and only on this PC. Tools that change something (restore, undo, start / stop) are marked, so your AI tool asks you first. If PHP Station is closed, it starts by itself without a window.
+
+<br clear="right">
+
+### 🧪 Upgrade Lab: will it run on PHP 8.5?
+
+![Upgrade Lab report: not ready for PHP 8.5.9 yet. Three packages that do not support it, the intl extension missing, a fatal "Cannot redeclare function array_first()" and deprecations, with every page compared on PHP 8.2.12 and PHP 8.5.9](docs/screenshots/23-upgrade-lab-report.png)
+
+Pick any other installed PHP version. PHP Station tests **your** project on it, without changing a file:
+
+1. **Packages**: every `composer.lock` package whose own `php` constraint leaves the new version out, the `composer.json` constraint, and `ext-*` extensions the new PHP does not load.
+2. **Code**: every app file is linted with the new PHP, **deprecations included** (implicit nullable parameters in 8.4, `(boolean)` casts in 8.5 ...).
+3. **Pages**: a second, temporary server runs the same folder on the new PHP. Every GET route from `route:list` (or every link of a plain PHP site) opens on **both** versions, and PHP Station compares the status, the PHP errors in the page and what each request wrote to the logs. Pages that sound like they change something (`logout`, `delete`, `reset` ...) are skipped, mail is caught, and a restore point can be saved first. Paste a session cookie to test the pages behind the login too.
+
+The verdict is plain: **ready**, **runs with warnings**, or **not ready yet**, with every file:line one click away in your editor. The screenshot is a real run: a helper named `array_first()` is fine on PHP 8.2 and a fatal error on PHP 8.5, which now has a built-in function with that name.
+
+<details>
+<summary><b>See the Upgrade Lab dialog</b></summary>
+
+![Upgrade Lab dialog: choose the PHP version, then packages, every PHP file, every page on both versions and a restore point](docs/screenshots/22-upgrade-lab-dialog.png)
+</details>
+
+### 🔐 Security scan before you go live
+
+![Security scan report: 24 serious problems. APP_DEBUG on in production, a phpinfo() file and a backup.sql in the public folder, a live Stripe key (masked) and an SQL injection in the code, and 43 known package vulnerabilities from composer audit](docs/screenshots/25-security-report.png)
+
+One click on a project card (**⋯ → Security scan**):
+
+- **Public folder and `.env`**: `APP_DEBUG=true` with `APP_ENV=production`, an empty `APP_KEY`, `.env`, `.git`, `phpinfo()` files or `.sql` / `.zip` backups that anyone could download.
+- **Code**: [vibe-security](https://github.com/sami-hussain-dev/vibe-security) finds leaked keys (shown masked), SQL injection, XSS, open endpoints and unsafe uploads, each with what to do about it. It runs on this PC; the code goes nowhere.
+- **Packages**: `composer audit` lists the known vulnerabilities (CVEs) and abandoned packages in `composer.lock`. This part asks packagist.org, which receives the package names and versions.
+
 ### 🕰️ DB Time Machine: undo one query, or the whole day
 
 ![DB Time Machine: each INSERT / UPDATE / DELETE with its SQL and old / new values, and an Undo button](docs/screenshots/13-db-time-machine.png)
@@ -131,7 +187,7 @@ Add a **`phpstation.json`** to your repository to pin versions for the whole tea
 - **Fast server.** On Windows, `php -S` handles one request at a time. PHP Station serves static files itself and spreads PHP over 4 workers per project. Pages load all at once instead of one file after another.
 - **`.htaccess` without Apache.** For projects without a router of their own (plain PHP, WordPress, CodeIgniter 3 ...), PHP Station applies the `.htaccess` rules most projects use: `RewriteRule` / `RewriteCond` with `-f` / `-d` and back-references, `[L]` `[QSA]` `[R=301]` `[F]` `[G]`, `Redirect` / `RedirectMatch`, `Require all denied` / `Deny from all` and `<FilesMatch>`, `DirectoryIndex`, `ErrorDocument` and `Header set`. `REQUEST_URI` stays what the browser asked for, as under Apache. Lines it cannot apply, such as `php_value`, are listed on the project card.
 - **Files menu.** `.env`, the `php.ini` and `my.ini` the project really uses, `laravel.log`, the DB error log, `.htaccess` and the hosts file open in your editor in one click.
-- **Live share link.** One button gives a running project a public `https://….trycloudflare.com` address for a client's phone. It uses a Cloudflare quick tunnel: no account, no router settings.
+- **Live share link with a QR code.** One button gives a running project a public `https://….trycloudflare.com` address, and a QR code to open it on a client's phone in one scan. It uses a Cloudflare quick tunnel: no account, no router settings. The QR code is drawn inside the panel; the link is not sent anywhere to make it.
 - **A terminal per project**, where `php` and `composer` are that project's versions. Also: a setup checklist (`.env`, `key:generate`, `composer install`, each `.env` change backed up first), adopting `php artisan serve` servers you started yourself, and "Show paths" with copy buttons.
 
 ### 🛡️ Databases that survive Windows
@@ -192,6 +248,9 @@ PHP Station does not throw away what you have: it finds your XAMPP / Laragon ins
 | `.htaccess` rewrites, redirects and access rules | ✅ common rules | ✅ Apache | ✅ Apache |
 | Import a MySQL 8 dump into MariaDB, with fixes and undo | ✅ | ❌ | ❌ |
 | One-click health check and an issue report without personal details | ✅ | ❌ | ❌ |
+| MCP server for AI agents (errors, mail, dumps, DB undo) | ✅ | ❌ | ❌ |
+| Test a project on another PHP version, page by page | ✅ | ❌ | ❌ |
+| Security scan: `composer audit`, code, public folder | ✅ | ❌ | ❌ |
 | Size of the tool itself | ~1 MB, zero dependencies | ~150 MB+ | ~100 MB+ |
 
 <sub>Based on the default behaviour of XAMPP and Laragon at the time of writing. If something here is out of date, please open an issue.</sub>
@@ -210,6 +269,24 @@ PHP Station does not throw away what you have: it finds your XAMPP / Laragon ins
 <summary><b>How do I run two Laravel projects with different PHP versions on Windows?</b></summary>
 
 Add both projects, choose a PHP version on each card (for example 8.0 for a Laravel 8 app and 8.3 for a Laravel 12 app), and switch both on. Each one runs with its own `php.exe` on its own port, at the same time.
+</details>
+
+<details>
+<summary><b>How do I connect Claude Code, Cursor or Copilot to my local Laravel app?</b></summary>
+
+Open **Settings → AI agents**, pick your tool and copy the line or the JSON it shows (Claude Code: `claude mcp add php-station ...`; Cursor: `.cursor\mcp.json`; VS Code: `.vscode\mcp.json`; Codex: `config.toml`). The agent then gets 14 tools: errors, caught mail, dumps, the database history with undo, restore points, start / stop and a health check. It picks the project of the folder it works in.
+</details>
+
+<details>
+<summary><b>Will my Laravel / PHP project run on PHP 8.4 or 8.5?</b></summary>
+
+Install the new PHP with the Setup wizard, start the project and choose **⋯ → Upgrade Lab**. It lists the packages that do not support the new PHP, the files that fail or show deprecations, and every page that answers differently on the two versions. Nothing in the project is changed.
+</details>
+
+<details>
+<summary><b>How do I check my PHP project for vulnerabilities before going live?</b></summary>
+
+**⋯ → Security scan** on the project card. It runs `composer audit` for known CVEs in your packages, [vibe-security](https://github.com/sami-hussain-dev/vibe-security) for leaked keys and injections in your code, and checks the public folder for `.env`, `.git`, `phpinfo()` and backup files.
 </details>
 
 <details>
@@ -282,6 +359,8 @@ Usually one of two things, and **Doctor** finds both. XAMPP's MariaDB ships with
 
 ```text
 PHP-Station.bat ─> node server.js ─> panel on 127.0.0.1:7070 (token + CSP)
+                                      │      ▲
+   AI agent ─ stdio ─> node tools\mcp.js ─┘  (same API, same token, this PC only)
                                       │
    ┌──────────────┬───────────────────┼──────────────────┬───────────────┬──────────────┐
    ▼              ▼                   ▼                  ▼               ▼              ▼
@@ -299,6 +378,7 @@ Small, readable source: `server.js` (HTTP + CLI), `lib/*.js` (one module per fea
 node server.js --launch            # start (if needed) and open the app window
 node server.js --serve [--port N] [--data DIR] [--no-open]
 node server.js --stop  [--data DIR]
+node tools\mcp.js      [--data DIR]   # MCP server for AI agents (stdio)
 npm test
 ```
 
@@ -336,6 +416,10 @@ Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBU
 - **GitHub se laayein:** repo ka link paste karein. Clone, sahi PHP, `composer install`, `.env`, database aur migrations sab khud ho jate hain, aur project chal padta hai.
 - **XAMPP / Laragon se shift:** aik click, aur purana folder jaisa tha waisa rehta hai.
 - **DB hifazat:** Windows band hote waqt DB saaf tareeqe se band hota hai. Roz backup banta hai, aur crash ho jaye to Repair ka aik button hai. Purana data kabhi delete ya overwrite nahi hota.
+- **AI agents (MCP):** Claude Code, Cursor, Copilot ya Codex ko jor dein. AI khud errors parhta hai, email se OTP uthata hai, `dump()` dekhta hai, aur `migrate:fresh` se pehle restore point bana leta hai. Settings → AI agents se aik line copy karein.
+- **Upgrade Lab:** "Kya mera project PHP 8.5 par chalega?" Project dono PHP versions par saath chalta hai, aur har package, har file aur har page ka muqabla ho kar batata hai ke kya tootega.
+- **Security scan:** live karne se pehle packages ki maloom kamzoriyan (`composer audit`), code me leaked keys / SQL injection, aur public folder me `.env`, `.git` ya backup files.
+- **Live link ka QR code:** client phone ke camera se scan kare aur site khul jaye.
 
 Tafseeli guide: [PEHLE-YE-PARHEIN.txt](PEHLE-YE-PARHEIN.txt).
 
@@ -343,4 +427,4 @@ Tafseeli guide: [PEHLE-YE-PARHEIN.txt](PEHLE-YE-PARHEIN.txt).
 
 Built by **Sami Hussain**, founder of [x8code](https://x8code.com). Released under the [MIT License](LICENSE).
 
-<sub>Keywords: local PHP development environment for Windows, XAMPP alternative, Laragon alternative, multiple PHP versions on Windows, run Laravel projects side by side, Laravel mail catcher, dump() viewer, laravel.log viewer, undo MySQL delete, MariaDB backup and repair, "MySQL shutdown unexpectedly" fix, clone Laravel project from GitHub, localhost control panel.</sub>
+<sub>Keywords: local PHP development environment for Windows, XAMPP alternative, Laragon alternative, multiple PHP versions on Windows, run Laravel projects side by side, Laravel mail catcher, dump() viewer, laravel.log viewer, undo MySQL delete, MariaDB backup and repair, "MySQL shutdown unexpectedly" fix, clone Laravel project from GitHub, localhost control panel, MCP server for PHP and Laravel, Claude Code Laravel, Cursor MCP local database, upgrade Laravel to PHP 8.5, PHP 8.4 deprecations checker, PHP compatibility check, composer audit GUI, PHP security scanner, Laravel security checklist.</sub>

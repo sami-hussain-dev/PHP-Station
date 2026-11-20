@@ -1849,3 +1849,63 @@ a.ib-file:hover span { text-decoration: underline; }
   font-size: 10.5px; font-weight: 700; line-height: 1; background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 .pc-foot-meta { padding: 0 16px 10px; font-size: 12px; text-align: end; }
+
+/* ---------------------------------------------------------------- live link QR code */
+.share-strip .btn.btn-icon { margin-inline-start: 0; }
+.qr-box { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.qr-svg {
+  width: 196px; height: 196px; padding: 6px; border-radius: 14px; background: #fff;
+  box-shadow: 0 0 0 1px var(--border-2), 0 10px 28px rgba(0, 0, 0, .35);
+}
+.qr-box figcaption { display: flex; align-items: center; gap: 6px; }
+.qr-box figcaption svg { width: 15px; height: 15px; }
+
+/* ---------------------------------------------------------------- reports (Upgrade Lab, Security scan) */
+.verdict {
+  display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 14px;
+  border: 1px solid var(--border-2); background: linear-gradient(var(--grad-start), var(--surface-2), var(--surface));
+}
+.verdict-icon { flex: none; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: var(--surface-3); }
+.verdict-icon svg { width: 24px; height: 24px; }
+.verdict.is-ready .verdict-icon, .verdict.is-ok .verdict-icon { background: var(--ok-soft); color: var(--ok-text); }
+.verdict.is-warnings .verdict-icon, .verdict.is-warn .verdict-icon { background: var(--warn-soft); color: var(--warn-text); }
+.verdict.is-blocked .verdict-icon, .verdict.is-bad .verdict-icon { background: var(--bad-soft); color: var(--bad-text); }
+.verdict.is-ready, .verdict.is-ok { border-color: var(--ok-line, var(--border-2)); }
+.verdict.is-blocked, .verdict.is-bad { border-color: var(--bad-line, var(--border-2)); }
+.verdict-text { min-width: 0; display: grid; gap: 4px; }
+.verdict-title { font: 700 17px/1.3 var(--font-display, var(--font)); color: var(--text); }
+.verdict-sub { color: var(--text-2); font-size: 13px; font-family: var(--mono); }
+.verdict-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.rep-sec { display: grid; gap: 8px; }
+.rep-h { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 14px; font-weight: 700; color: var(--text); }
+.rep-h svg { width: 17px; height: 17px; color: var(--text-2); }
+.rep-count { margin-inline-start: 2px; padding: 0 8px; border-radius: 999px; font: 600 12px/20px var(--mono); background: var(--surface-3); color: var(--text-2); }
+.rep-item {
+  display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); border-inline-start-width: 3px;
+}
+.rep-item.is-bad { border-inline-start-color: var(--bad); }
+.rep-item.is-warn { border-inline-start-color: var(--warn); }
+.rep-msg { color: var(--text); overflow-wrap: anywhere; }
+.rep-files { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.rep-ok { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ok-text); }
+.rep-ok svg { width: 17px; height: 17px; }
+.rep-snippet {
+  margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--sunken); color: var(--text-2);
+  font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow: auto;
+}
+.tx-bad { color: var(--bad-text); }
+.tx-warn { color: var(--warn-text); }
+.lab-more summary { cursor: pointer; color: var(--text-2); font-weight: 600; }
+.lab-more[open] summary { margin-bottom: 10px; }
+
+/* ---------------------------------------------------------------- AI agents (MCP) */
+.seg.seg-wrap { flex-wrap: wrap; height: auto; }
+.ai-code {
+  margin: 0; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--sunken); color: var(--text); font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-all;
+}
+.ai-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-tools .chip svg { width: 13px; height: 13px; }
+.stack-tight { display: grid; gap: 2px; }
+.report .mono, .report .ib-file, .verdict-sub { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
