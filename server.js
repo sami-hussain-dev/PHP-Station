@@ -43,6 +43,7 @@ const gitclone = require('./lib/gitclone');
 const upgradelab = require('./lib/upgradelab');
 const secscan = require('./lib/secscan');
 const mcp = require('./lib/mcp');
+const ai = require('./lib/ai');
 const i18n = require('./lib/i18n');
 
 const { AppError } = util;
@@ -884,6 +885,36 @@ route('GET', '/api/mcp/config', () => {
   const script = path.join(TOOL_DIR, 'tools', 'mcp.js');
   return { script, node: process.execPath, configs: mcp.clientConfigs({ node: process.execPath, script }), tools: mcp.TOOLS.map((t) => ({ name: t.name, title: t.title, readOnly: !!t.annotations.readOnlyHint })) };
 });
+
+// ------------------------------------------------------------------------------------------ AI hub (free accounts first, auto-switch)
+route('GET', '/api/ai', (ctx) => ai.overview(ctx));
+route('POST', '/api/ai/settings', (ctx, { body }) => ai.settings(ctx, body));
+route('POST', '/api/ai/accounts/add', async (ctx, { body }) => ({ account: await ai.addPaid(ctx, body) }));
+route('POST', '/api/ai/accounts/:id/key', async (ctx, { params, body }) => ({ account: await ai.setKey(ctx, params.id, body.key) }));
+route('POST', '/api/ai/accounts/:id/update', (ctx, { params, body }) => ({ account: ai.update(ctx, params.id, body) }));
+route('POST', '/api/ai/accounts/:id/remove', (ctx, { params, body }) => { needConfirm(body); return ai.remove(ctx, params.id); });
+route('POST', '/api/ai/accounts/:id/test', (ctx, { params }) => ai.test(ctx, params.id));
+route('GET', '/api/ai/accounts/:id/models', (ctx, { params }) => ai.models(ctx, params.id));
+route('GET', '/api/ai/chats', (ctx) => ai.listChats(ctx));
+route('POST', '/api/ai/chats', (ctx, { body }) => ai.newChat(ctx, body));
+route('GET', '/api/ai/chats/:id', (ctx, { params }) => ({ chat: ai.getChat(ctx, params.id) }));
+route('POST', '/api/ai/chats/:id/send', (ctx, { params, body }) => ai.sendChat(ctx, params.id, body.text));
+route('POST', '/api/ai/chats/:id/delete', (ctx, { params }) => ai.deleteChat(ctx, params.id));
+// Fix with AI: propose (nothing written) -> the user looks at the diff -> apply (backup, check) -> undo
+route('POST', '/api/projects/:id/ai-fix', (ctx, { params, body }) => {
+  const p = projects.getProject(ctx, params.id);
+  const jobId = jobs.createJob('ai-fix', tr('job.aiFix', { name: p.name }), (log) => ai.proposeJob(ctx, p.id, body, log));
+  jobs.getJob(jobId).projectId = p.id;
+  return { jobId };
+});
+route('POST', '/api/ai/fix/:fixId/apply', (ctx, { params, body }) => {
+  needConfirm(body);
+  if (jobs.findRunning('ai-apply', (j) => j.fixId === params.fixId)) throw new AppError('BUSY', tr('ai.busy'), 409);
+  const jobId = jobs.createJob('ai-apply', tr('job.aiApply'), (log) => ai.applyJob(ctx, params.fixId, log));
+  jobs.getJob(jobId).fixId = params.fixId;
+  return { jobId };
+});
+route('POST', '/api/ai/fix/:fixId/undo', (ctx, { params, body }) => { needConfirm(body); return ai.undoFix(ctx, params.fixId); });
 
 // ------------------------------------------------------------------------------------------ shift from XAMPP / Laragon
 route('GET', '/api/import/plan', (ctx) => importer.plan(ctx));

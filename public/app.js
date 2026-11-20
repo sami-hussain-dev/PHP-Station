@@ -215,6 +215,7 @@
     trash: 'M4 7h16|M10 11v6|M14 11v6|M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12|M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7',
     external: 'M14 4h6v6|M20 4l-9 9|M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4',
     'chevron-down': 'M6 9l6 6 6-6',
+    'chevron-up': 'M6 15l6-6 6 6',
     'chevron-right': 'M9 6l6 6-6 6',
     key: 'c:8,15,4|M11 12l9-9|M16 7l3 3|M14 9l2 2',
     download: 'M12 4v11|M7 10l5 5 5-5|M5 20h14',
@@ -1085,6 +1086,7 @@
   const PAGES = [
     {id: 'projects', icon: 'grid'},
     {id: 'inbox', icon: 'inbox'},
+    {id: 'ai', icon: 'sparkle'},
     {id: 'db', icon: 'db'},
     {id: 'move', icon: 'move'},
     {id: 'runtimes', icon: 'cpu'},
@@ -4180,7 +4182,8 @@
       const rows = [];
       for (const e of arr(ln.errors).slice(0, 100)) {
         rows.push(h('div', {class: 'rep-item is-bad'}, fileLink(absIn(p, e.file), e.line, p.path), h('div', {class: 'rep-msg'}, e.message),
-          e.alsoOnCurrent ? h('div', {class: 'muted small'}, t('labr.alsoNow')) : null));
+          e.alsoOnCurrent ? h('div', {class: 'muted small'}, t('labr.alsoNow')) : null,
+          h('div', {class: 'row'}, aiFixButton(p, {source: 'lint', message: e.message + ' (PHP ' + res.target.version + ')', file: absIn(p, e.file), line: e.line, phpPath: res.target.path}))));
       }
       // deprecations: one row per message, with where it happens
       const groups = new Map();
@@ -4191,7 +4194,8 @@
       }
       for (const g of [...groups.values()].sort((a, b) => b.list.length - a.list.length).slice(0, 40)) {
         rows.push(h('div', {class: 'rep-item is-warn'}, h('div', {class: 'rep-msg'}, chip('×' + g.list.length, {kind: 'warn', mono: true}), ' ', g.message),
-          h('div', {class: 'rep-files'}, g.list.slice(0, 4).map((d) => fileLink(absIn(p, d.file), d.line, p.path)), g.list.length > 4 ? h('span', {class: 'muted small'}, t('labr.more', {n: g.list.length - 4})) : null)));
+          h('div', {class: 'rep-files'}, g.list.slice(0, 4).map((d) => fileLink(absIn(p, d.file), d.line, p.path)), g.list.length > 4 ? h('span', {class: 'muted small'}, t('labr.more', {n: g.list.length - 4})) : null),
+          h('div', {class: 'row'}, aiFixButton(p, {source: 'deprecation', message: g.message + ' (PHP ' + res.target.version + ')', file: absIn(p, g.list[0].file), line: g.list[0].line, phpPath: res.target.path}))));
       }
       if (!rows.length) rows.push(h('p', {class: 'rep-ok'}, icon('check-circle'), t('labr.codeOk', {n: ln.files})));
       parts.push(reportSection('code', t('labr.code', {n: ln.files}), arr(ln.errors).length + arr(ln.deprecations).length, ...rows));
@@ -4205,6 +4209,10 @@
           chip(t('labr.c.' + k, {n: c[k] || 0}), {kind: k === 'broken' ? (c[k] ? 'bad' : null) : k === 'same' ? 'ok' : (c[k] ? 'warn' : null)}))));
         const shown = arr(cr.routes).filter((x) => x.verdict !== 'same').slice(0, 200);
         const status = (s) => h('span', {class: ['mono', s.status === 0 || s.status >= 500 ? 'tx-bad' : s.status >= 400 ? 'tx-warn' : null]}, s.status === 0 ? '—' : String(s.status), h('span', {class: 'muted small'}, ' ' + s.ms + ' ms'));
+        const labFix = (x) => {
+          const e = arr(x.b.log).find((l) => !l.deprecation && l.file) || arr(x.b.markers).find((m) => m.file) || arr(x.b.phpErrors).find((l) => l.file) || arr(x.b.log).find((l) => l.file);
+          return e ? aiFixButton(p, {source: x.verdict === 'deprecated' ? 'deprecation' : 'page', message: (e.level ? e.level + ': ' : '') + e.message + ' (PHP ' + res.target.version + ', ' + x.path + ')', file: e.file, line: e.line, phpPath: res.target.path}) : null;
+        };
         const why = (x) => {
           const e = arr(x.b.log).find((l) => !l.deprecation) || arr(x.b.markers)[0] || arr(x.b.phpErrors)[0] || arr(x.b.log)[0];
           if (!e) return x.b.location !== x.a.location ? h('div', {class: 'muted small mono'}, '→ ' + (x.b.location || '-')) : null;
@@ -4215,7 +4223,7 @@
           rows.push(h('div', {class: 'table-wrap'}, h('table', {class: 'table'},
             h('thead', null, h('tr', null, h('th', null, t('labr.page')), h('th', null, t('labr.verdict')), h('th', null, 'PHP ' + res.current.version), h('th', null, 'PHP ' + res.target.version))),
             h('tbody', null, shown.map((x) => h('tr', null,
-              h('td', null, h('div', {class: 'mono', dir: 'ltr'}, x.path), why(x)),
+              h('td', null, h('div', {class: 'mono', dir: 'ltr'}, x.path), why(x), labFix(x)),
               h('td', {class: 'shrink'}, chip(t('labr.c1.' + x.verdict), {kind: x.verdict === 'broken' ? 'bad' : 'warn'})),
               h('td', {class: 'shrink'}, status(x.a)), h('td', {class: 'shrink'}, status(x.b))))))));
         } else rows.push(h('p', {class: 'rep-ok'}, icon('check-circle'), t('labr.pagesOk', {n: arr(cr.routes).length})));
@@ -4281,6 +4289,7 @@
             h('div', {class: 'rep-msg'}, sevChip(x.severity), ' ', h('b', null, x.title)),
             x.file ? fileLink(absIn(p, x.file), x.line, p.path) : null,
             x.snippet ? h('pre', {class: 'rep-snippet', dir: 'ltr'}, x.snippet) : null,
+            x.file && !/(^|[\\/])\.env(\.|$)|\.(sql|zip|gz)$/i.test(x.file) ? h('div', {class: 'row'}, aiFixButton(p, {source: 'security', message: x.title + (x.why ? '. ' + x.why : '') + (x.fix ? ' Fix: ' + x.fix : ''), file: absIn(p, x.file), line: x.line})) : null,
             h('div', {class: 'muted small'}, useUr && x.ur ? x.ur : [x.why, x.fix].filter(Boolean).join(' ')))) : h('p', {class: 'rep-ok'}, icon('check-circle'), t('secr.codeOk')),
           code.total > f.length ? h('p', {class: 'muted small'}, t('labr.more', {n: code.total - f.length})) : null,
           h('p', {class: 'muted small'}, t('secr.byVibe', {v: code.version || ''}))
@@ -4350,6 +4359,338 @@
       h('div', {class: 'panel-head'}, h('h2', {class: 'panel-title'}, icon('sparkle'), t('ai.title')), h('span', {class: 'panel-sub'}, 'MCP')),
       h('div', {class: 'panel-body stack'}, out));
   }
+
+  /* ===================== Fix with AI (a button next to every error) ===================== */
+  const TIER_KIND = {free: 'ok', local: null, paid: 'warn'};
+  function tierChip(tier) { return chip(t('hub.tier.' + tier), {kind: TIER_KIND[tier] || null, mono: true}); }
+  /** "Fix with AI" button. payload: {source, message, file, line, frames?, url?, phpPath?, extra?} */
+  function aiFixButton(p, payload) {
+    if (!p || !payload || !payload.file) return null;
+    return btn(t('fix.btn'), {size: 'sm', kind: 'soft', icon: 'sparkle', className: 'ai-fix-btn', title: t('fix.btnTitle'),
+      onClick: (ev) => { ev.stopPropagation(); openAiFix(p, payload); }});
+  }
+  async function openAiFix(p, payload) {
+    const hub = await api('GET', '/api/ai');
+    if (!hub.ok) return failToast(t('fix.title'), hub);
+    const local = !!(hub.localOnly && hub.localOnly[p.id]);
+    const next = local ? arr(hub.accounts).find((a) => a.tier === 'local' && a.enabled && a.status === 'ready') : hub.next;
+    if (!next) {
+      const go = await confirmDialog({title: t('fix.title'), icon: 'sparkle', size: 'sm', message: local ? t('fix.noLocal') : t('fix.noAi'), confirmLabel: t('fix.openHub'), confirmIcon: 'key'});
+      if (go) { AIS.tab = 'accounts'; goPage('ai'); }
+      return;
+    }
+    const where = payload.file ? shortPath(payload.file, p.path) + (payload.line ? ':' + payload.line : '') : '';
+    const yes = await confirmDialog({
+      title: t('fix.title'), icon: 'sparkle', size: 'md', message: t('fix.q'),
+      details: h('div', {class: 'stack'},
+        h('div', {class: 'rep-item is-bad'}, h('div', {class: 'rep-msg'}, payload.message), where ? h('div', {class: 'mono small', dir: 'ltr'}, where) : null),
+        h('div', {class: 'row'}, icon('sparkle'), h('span', null, t('fix.sendTo')), h('b', null, next.name), tierChip(next.tier)),
+        callout(next.tier === 'local' ? 'ok' : 'info', null, next.tier === 'local' ? t('fix.sentLocal') : t('fix.sentCloud'))),
+      confirmLabel: t('fix.ask'), confirmIcon: 'sparkle'
+    });
+    if (!yes) return;
+    const r = await api('POST', '/api/projects/' + enc(p.id) + '/ai-fix', payload);
+    if (!r.ok || !r.jobId) return failToast(t('fix.title'), r);
+    showJob(r.jobId, {title: t('fix.title') + ' — ' + p.name, icon: 'sparkle', size: 'lg', quietCodes: ['NO_AI'],
+      renderResult: (job) => (job.status === 'done' && job.result ? fixProposal(p, job.result) : job.code === 'NO_AI' ? h('div', {class: 'row'}, btn(t('fix.openHub'), {size: 'sm', icon: 'key', onClick: () => { closeAllModals(); AIS.tab = 'accounts'; lsSet('devpanel.aiTab', 'accounts'); goPage('ai'); aiRender(); }})) : null)});
+  }
+  function closeAllModals() { for (const m of modalStack.slice()) m.close(); }
+  function fixDiffView(diff) {
+    return arr(diff).map((d) => h('div', {class: 'diff'},
+      h('div', {class: 'diff-file mono', dir: 'ltr'}, icon('file'), d.file),
+      h('pre', {class: 'diff-body', dir: 'ltr'}, arr(d.lines).map((l) => h('span', {class: l[0] === '+' ? 'd-add' : l[0] === '-' ? 'd-del' : null}, l + '\n')))));
+  }
+  function byLine(res) {
+    const by = res.by || {};
+    const sw = arr(res.switched);
+    return h('div', {class: 'row muted small ai-by'}, icon('sparkle'), h('span', null, t('fix.by', {name: by.name || '?', model: by.model || ''})), tierChip(by.tier || 'free'),
+      sw.length ? h('span', null, t('hub.switched', {list: sw.map((x) => x.name + ' (' + t('hub.kind.' + x.kind) + ')').join(', ')})) : null);
+  }
+  function fixProposal(p, res) {
+    const box = h('div', {class: 'stack'});
+    const edits = arr(res.diff);
+    box.append(
+      byLine(res),
+      res.explanation ? h('p', {class: 'ai-expl'}, res.explanation) : null,
+      edits.length ? h('div', {class: 'stack'}, fixDiffView(edits)) : callout('warn', null, t('fix.noEdits')));
+    if (edits.length) {
+      const applyBtn = btn(t('fix.apply'), {kind: 'primary', icon: 'check', onClick: async () => {
+        setBusy(applyBtn, true);
+        const r = await api('POST', '/api/ai/fix/' + enc(res.fixId) + '/apply', {confirm: true});
+        setBusy(applyBtn, false);
+        if (!r.ok || !r.jobId) return failToast(t('fix.applyFail'), r);
+        closeAllModals();
+        showJob(r.jobId, {title: t('fix.applying') + ' — ' + p.name, icon: 'sparkle', size: 'lg', renderResult: (job) => (job.result ? fixOutcome(p, job.result) : null)});
+      }});
+      box.append(h('div', {class: 'row'}, applyBtn, h('span', {class: 'muted small'}, t('fix.applyHint'))));
+    }
+    return box;
+  }
+  function fixOutcome(p, res) {
+    const undo = res.ok ? btn(t('fix.undo'), {size: 'sm', kind: 'soft-danger', icon: 'undo', onClick: async (ev) => {
+      const b = ev.currentTarget;
+      setBusy(b, true);
+      const r = await api('POST', '/api/ai/fix/' + enc(res.fixId) + '/undo', {confirm: true});
+      setBusy(b, false);
+      if (!r.ok) return failToast(t('fix.undoFail'), r);
+      b.disabled = true;
+      toast('success', t('fix.undone'), p.name);
+    }}) : null;
+    return h('div', {class: 'stack'},
+      callout(res.ok ? 'ok' : 'bad', res.ok ? t('fix.okTitle') : t('fix.failTitle'), res.ok ? t('fix.okText') : t('fix.failText')),
+      byLine(res),
+      res.report ? h('pre', {class: 'term-mini', dir: 'ltr'}, res.report) : null,
+      res.ok ? h('div', {class: 'stack'}, fixDiffView(res.diff)) : null,
+      undo ? h('div', {class: 'row'}, undo, h('span', {class: 'muted small'}, t('fix.undoHint'))) : null);
+  }
+
+  /* ===================== AI page: chat + accounts (free first, auto-switch) ===================== */
+  const AIS = {tab: lsGet('devpanel.aiTab') || 'chat', chatId: null, root: null};
+  pageImpl.ai = {mount: mountAi, update: () => {}, unmount() { AIS.root = null; }};
+  function mountAi(root) {
+    AIS.root = h('div', {class: 'ai-body'});
+    const tabs = h('div', {class: 'seg', role: 'tablist'});
+    for (const x of [{id: 'chat', icon: 'sparkle'}, {id: 'accounts', icon: 'key'}]) {
+      const b = h('button', {type: 'button', class: 'seg-btn', role: 'tab', dataset: {tab: x.id}, 'aria-pressed': String(AIS.tab === x.id)}, icon(x.icon), h('span', null, t('hub.tab.' + x.id)));
+      b.addEventListener('click', () => { AIS.tab = x.id; lsSet('devpanel.aiTab', x.id); for (const c of tabs.children) c.setAttribute('aria-pressed', String(c.dataset.tab === x.id)); aiRender(); });
+      tabs.appendChild(b);
+    }
+    root.append(h('div', {class: 'toolbar'}, tabs), AIS.root);
+    aiRender();
+  }
+  function aiRender() {
+    if (!AIS.root) return;
+    if (AIS.tab === 'accounts') hubAccounts(AIS.root); else hubChat(AIS.root);
+  }
+
+  // ----- accounts
+  async function hubAccounts(root) {
+    root.replaceChildren(h('div', {class: 'row muted'}, spinner(), t('common.loading')));
+    const r = await api('GET', '/api/ai');
+    if (!AIS.root || AIS.tab !== 'accounts') return;
+    if (!r.ok) { root.replaceChildren(callout('bad', null, errorText(r))); return; }
+    const paidSw = makeSwitch({checked: !!r.paidFirst, label: t('hub.paidFirst'), onToggle: async (v, el) => {
+      el.setAttribute('aria-checked', String(v));
+      const x = await api('POST', '/api/ai/settings', {paidFirst: v});
+      if (!x.ok) failToast(t('hub.saveFail'), x);
+    }});
+    const addBtn = btn(t('hub.addPaid'), {icon: 'plus', onClick: () => openAddPaid(r.paidTemplates)});
+    const list = arr(r.accounts);
+    const free = list.filter((a) => a.tier !== 'paid');
+    const paid = list.filter((a) => a.tier === 'paid');
+    const localBox = h('div', {class: 'check-list'}, arr(S.state && S.state.projects).map((p) => {
+      const ck = checkItem({icon: 'lock', title: p.name, desc: t('hub.localOnlyD'), checked: !!(r.localOnly && r.localOnly[p.id])});
+      ck.cb.addEventListener('change', async () => {
+        const x = await api('POST', '/api/ai/settings', {localOnly: {[p.id]: ck.cb.checked}});
+        if (!x.ok) failToast(t('hub.saveFail'), x);
+      });
+      return ck.el;
+    }));
+    root.replaceChildren(h('div', {class: 'stack'},
+      callout('info', t('hub.howTitle'), t('hub.how')),
+      h('div', {class: 'row'}, h('div', {class: 'row'}, paidSw, h('span', null, t('hub.paidFirstText'))), h('span', {class: 'spacer'}), addBtn),
+      r.next ? h('div', {class: 'row muted small'}, icon('sparkle'), t('hub.nextUp', {name: r.next.name})) : callout('warn', null, t('hub.noneReady')),
+      h('h3', {class: 'rep-h'}, icon('sparkle'), h('span', null, t('hub.freeTitle'))),
+      h('div', {class: 'hub-grid'}, free.map((a) => accountCard(a))),
+      h('h3', {class: 'rep-h'}, icon('key'), h('span', null, t('hub.paidTitle'))),
+      paid.length ? h('div', {class: 'hub-grid'}, paid.map((a) => accountCard(a))) : h('p', {class: 'muted'}, t('hub.noPaid')),
+      h('h3', {class: 'rep-h'}, icon('lock'), h('span', null, t('hub.localOnlyTitle'))),
+      h('p', {class: 'muted small'}, t('hub.localOnlyText')),
+      localBox));
+  }
+  const STATUS_KIND = {ready: 'ok', noKey: null, off: null, auth: 'bad', cooling: 'warn', quota: 'warn', credit: 'bad'};
+  function accountCard(a) {
+    const statusText = a.until ? t('hub.st.' + a.status, {at: new Date(a.until).toLocaleTimeString()}) : t('hub.st.' + a.status, {at: ''});
+    const model = h('input', {class: 'input mono', value: a.model, placeholder: t('hub.modelAuto'), spellcheck: 'false', autocomplete: 'off', dir: 'ltr'});
+    const modelList = h('select', {class: 'select', hidden: true});
+    const saveModel = async () => { const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/update', {model: model.value.trim()}); if (!x.ok) failToast(t('hub.saveFail'), x); else toast('success', t('hub.saved'), a.name); };
+    model.addEventListener('change', saveModel);
+    modelList.addEventListener('change', () => { model.value = modelList.value; saveModel(); });
+    const loadModels = btn(t('hub.models'), {size: 'sm', kind: 'ghost', icon: 'list', onClick: async (ev) => {
+      const b = ev.currentTarget;
+      setBusy(b, true);
+      const x = await api('GET', '/api/ai/accounts/' + enc(a.id) + '/models');
+      setBusy(b, false);
+      if (!x.ok) return failToast(t('hub.modelsFail'), x);
+      modelList.replaceChildren(h('option', {value: ''}, t('hub.pickModel', {n: arr(x.models).length})), ...arr(x.models).map((m) => h('option', {value: m, selected: m === a.model}, m)));
+      modelList.hidden = false;
+    }});
+    const key = h('input', {class: 'input mono', type: 'password', placeholder: a.keyHint || t('hub.keyPh'), autocomplete: 'off', spellcheck: 'false', dir: 'ltr'});
+    const saveKey = btn(t('hub.saveKey'), {size: 'sm', icon: 'check', onClick: async (ev) => {
+      const b = ev.currentTarget;
+      setBusy(b, true);
+      const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/key', {key: key.value});
+      setBusy(b, false);
+      key.value = '';
+      if (!x.ok) return failToast(t('hub.saveFail'), x);
+      toast('success', t('hub.keySaved'), a.name);
+      aiRender();
+    }});
+    const testBtn = btn(t('hub.test'), {size: 'sm', kind: 'ghost', icon: 'play', disabled: a.status === 'noKey', onClick: async (ev) => {
+      const b = ev.currentTarget;
+      setBusy(b, true);
+      const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/test', {});
+      setBusy(b, false);
+      if (x.ok) toast('success', t('hub.testOk', {name: a.name}), t('hub.testOkMsg', {model: x.model, ms: x.ms}));
+      else toast('error', t('hub.testFail', {name: a.name}), (x.kind ? t('hub.kind.' + x.kind) + ' — ' : '') + (x.error || errorText(x)), {duration: 9000});
+      aiRender();
+    }});
+    const enabled = makeSwitch({checked: a.enabled, label: t('hub.enabled'), size: 'sm', onToggle: async (v, el) => {
+      el.setAttribute('aria-checked', String(v));
+      const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/update', {enabled: v});
+      if (!x.ok) failToast(t('hub.saveFail'), x);
+    }});
+    const move = (dir) => btn(t('hub.move.' + dir), {size: 'sm', kind: 'ghost', iconOnly: true, icon: dir === 'up' ? 'chevron-up' : 'chevron-down', onClick: async () => {
+      const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/update', {move: dir});
+      if (!x.ok) return failToast(t('hub.saveFail'), x);
+      aiRender();
+    }});
+    const remove = a.removable ? btn(t('hub.remove'), {size: 'sm', kind: 'soft-danger', iconOnly: true, icon: 'trash', onClick: async () => {
+      const yes = await confirmDialog({title: t('hub.removeQ', {name: a.name}), icon: 'trash', tone: 'bad', size: 'sm', message: t('hub.removeMsg'), confirmLabel: t('hub.remove'), confirmIcon: 'trash'});
+      if (!yes) return;
+      const x = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/remove', {confirm: true});
+      if (!x.ok) return failToast(t('hub.saveFail'), x);
+      aiRender();
+    }}) : null;
+    const getKey = a.keyUrl ? h('a', {href: a.keyUrl, target: '_blank', rel: 'noopener noreferrer', class: 'small hub-link'}, icon('external'), ' ', a.noKey ? t('hub.getOllama') : a.tier === 'paid' ? t('hub.getKeyPaid') : t('hub.getKey')) : null;
+    return h('section', {class: ['card', 'hub-card', 'is-' + a.status]},
+      h('div', {class: 'hub-head'}, h('div', {class: 'hub-title'}, h('b', null, a.name), h('div', {class: 'hub-chips'}, tierChip(a.tier), chip(statusText, {kind: STATUS_KIND[a.status] || null}))), h('div', {class: 'hub-ctrls'}, move('up'), move('down'), enabled, remove)),
+      a.noKey ? h('p', {class: 'muted small'}, t('hub.noKeyNeeded')) : h('div', {class: 'row hub-key'}, key, saveKey),
+      h('div', {class: 'row hub-model'}, model, loadModels), modelList,
+      h('div', {class: 'row muted small'}, t('hub.usage', {n: a.usage.requests, tok: fmtNum(a.usage.tokens)}), h('span', {class: 'spacer'}), getKey, testBtn),
+      a.lastError && a.status !== 'ready' ? h('div', {class: 'muted small hub-err', dir: 'ltr'}, a.lastError) : null);
+  }
+  function fmtNum(n) { const v = Number(n) || 0; return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v); }
+  function openAddPaid(templates) {
+    const tpl = arr(templates);
+    const sel = h('select', {class: 'select'}, tpl.map((x) => h('option', {value: x.id}, x.name)));
+    const base = h('input', {class: 'input mono', placeholder: 'https://…/v1', dir: 'ltr', spellcheck: 'false'});
+    const model = h('input', {class: 'input mono', dir: 'ltr', spellcheck: 'false'});
+    const key = h('input', {class: 'input mono', type: 'password', autocomplete: 'off', dir: 'ltr', spellcheck: 'false', placeholder: t('hub.keyPh')});
+    const baseField = field(t('hub.base'), base, null, t('hub.baseHint'));
+    const link = h('div', {class: 'small'});
+    const sync = () => {
+      const x = tpl.find((y) => y.id === sel.value) || {};
+      baseField.hidden = x.id !== 'custom';
+      model.value = x.model || '';
+      model.placeholder = x.model || t('hub.modelAuto');
+      link.replaceChildren(x.keyUrl ? h('a', {href: x.keyUrl, target: '_blank', rel: 'noopener noreferrer', class: 'hub-link'}, icon('external'), ' ', t('hub.getKeyPaid')) : '');
+    };
+    sel.addEventListener('change', sync);
+    sync();
+    const err = h('div', {class: 'field-error', 'aria-live': 'polite'});
+    openModal({
+      title: t('hub.addPaid'), icon: 'key', size: 'md',
+      body: h('div', {class: 'stack'}, callout('warn', null, t('hub.paidWarn')), field(t('hub.provider'), sel), baseField, field(t('hub.model'), model, null, t('hub.modelHint')), field(t('hub.key'), key, null, t('hub.keyHint')), link, err),
+      actions: [{label: t('common.cancel'), value: null}, {label: t('hub.add'), kind: 'primary', icon: 'plus', onClick: async (m, b) => {
+        setBusy(b, true);
+        const x = await api('POST', '/api/ai/accounts/add', {template: sel.value, base: base.value, model: model.value, key: key.value});
+        setBusy(b, false);
+        if (!x.ok) { err.textContent = errorText(x); return; }
+        m.close();
+        toast('success', t('hub.added'), x.account.name);
+        aiRender();
+      }}]
+    });
+  }
+
+  // ----- chat
+  async function hubChat(root) {
+    const listBox = h('div', {class: 'chat-list'});
+    const main = h('div', {class: 'chat-main'});
+    const projSel = h('select', {class: 'select', 'aria-label': t('hub.chatProject')},
+      h('option', {value: ''}, t('hub.noProject')), arr(S.state && S.state.projects).map((p) => h('option', {value: p.id}, p.name)));
+    const newBtn = btn(t('hub.newChat'), {kind: 'primary', icon: 'plus', onClick: async () => {
+      const r = await api('POST', '/api/ai/chats', {projectId: projSel.value || null});
+      if (!r.ok) return failToast(t('hub.chatFail'), r);
+      AIS.chatId = r.chat.id;
+      hubChat(root);
+    }});
+    root.replaceChildren(h('div', {class: 'chat-wrap'}, h('aside', {class: 'chat-side'}, newBtn, projSel, listBox), main));
+    const r = await api('GET', '/api/ai/chats');
+    if (!r.ok) { listBox.replaceChildren(callout('bad', null, errorText(r))); return; }
+    const chats = arr(r.chats);
+    if (!AIS.chatId && chats.length) AIS.chatId = chats[0].id;
+    listBox.replaceChildren(...(chats.length ? chats.map((c) => {
+      const b = h('button', {type: 'button', class: ['chat-item', c.id === AIS.chatId && 'is-active']}, h('span', {class: 'chat-title'}, c.title), h('span', {class: 'muted small'}, agoText(c.updatedAt)));
+      b.addEventListener('click', () => { AIS.chatId = c.id; hubChat(root); });
+      return b;
+    }) : [h('p', {class: 'muted small'}, t('hub.noChats'))]));
+    main.classList.toggle('is-empty', !AIS.chatId);
+    if (AIS.chatId) openChat(main, AIS.chatId, root); else main.replaceChildren(emptyState({icon: 'sparkle', title: t('hub.chatEmptyTitle'), text: t('hub.chatEmptyText')}));
+  }
+  /** Chat text with ``` code blocks; everything goes in as text (no HTML from the AI is ever rendered). */
+  function richText(text) {
+    const out = [];
+    const parts = String(text || '').split(/```/);
+    parts.forEach((part, i) => {
+      if (i % 2 === 1) {
+        const nl = part.indexOf('\n');
+        const lang = nl > 0 ? part.slice(0, nl).trim() : '';
+        const code = nl > 0 ? part.slice(nl + 1) : part;
+        out.push(h('div', {class: 'chat-code'}, h('div', {class: 'chat-code-head'}, h('span', {class: 'mono small'}, lang || 'code'), copyButton(code.replace(/\n$/, ''))), h('pre', {dir: 'ltr'}, code.replace(/\n$/, ''))));
+      } else if (part.trim()) {
+        for (const para of part.split(/\n{2,}/)) if (para.trim()) {
+          const p = h('p', {dir: 'auto'});
+          para.split(/(`[^`\n]+`)/).forEach((seg) => { if (/^`[^`]+`$/.test(seg)) p.appendChild(h('code', null, seg.slice(1, -1))); else p.appendChild(document.createTextNode(seg)); });
+          out.push(p);
+        }
+      }
+    });
+    return out;
+  }
+  async function openChat(main, id, root) {
+    const r = await api('GET', '/api/ai/chats/' + enc(id));
+    if (!r.ok) { main.replaceChildren(callout('bad', null, errorText(r))); return; }
+    const c = r.chat;
+    const log = h('div', {class: 'chat-log', 'aria-live': 'polite'});
+    const bubble = (m) => h('div', {class: ['chat-msg', 'is-' + m.role]},
+      h('div', {class: 'chat-bubble'}, richText(m.content)),
+      m.role === 'assistant' && m.by ? h('div', {class: 'chat-meta muted small'}, icon('sparkle'), ' ' + m.by.name + (m.by.model ? ' · ' + m.by.model : ''),
+        arr(m.switched).length ? h('span', {class: 'chat-switch'}, ' · ' + t('hub.switched', {list: m.switched.map((x) => x.name + ' (' + t('hub.kind.' + x.kind) + ')').join(', ')})) : null) : null);
+    for (const m of arr(c.messages)) log.appendChild(bubble(m));
+    const input = h('textarea', {class: 'input chat-input', rows: 3, placeholder: t('hub.chatPh'), dir: 'auto'});
+    const send = btn(t('hub.send'), {kind: 'primary', icon: 'arrow', onClick: () => doSend()});
+    const del = btn(t('hub.deleteChat'), {kind: 'ghost', size: 'sm', icon: 'trash', onClick: async () => {
+      const yes = await confirmDialog({title: t('hub.deleteChatQ'), icon: 'trash', tone: 'bad', size: 'sm', message: c.title, confirmLabel: t('hub.deleteChat'), confirmIcon: 'trash'});
+      if (!yes) return;
+      await api('POST', '/api/ai/chats/' + enc(c.id) + '/delete', {});
+      AIS.chatId = null;
+      hubChat(root);
+    }});
+    const proj = c.projectId ? findProject(c.projectId) : null;
+    async function doSend() {
+      const text = input.value.trim();
+      if (!text) return;
+      log.appendChild(bubble({role: 'user', content: text}));
+      const wait = h('div', {class: 'chat-msg is-assistant'}, h('div', {class: 'chat-bubble row muted'}, spinner(), t('hub.thinking')));
+      log.appendChild(wait);
+      log.scrollTop = log.scrollHeight;
+      input.value = '';
+      setBusy(send, true);
+      const x = await api('POST', '/api/ai/chats/' + enc(c.id) + '/send', {text});
+      setBusy(send, false);
+      wait.remove();
+      if (!x.ok) {
+        input.value = text;
+        log.lastChild && log.lastChild.remove();
+        log.appendChild(h('div', {class: 'chat-msg is-error'}, callout('bad', null, h('div', null, errorText(x), x.code === 'NO_AI' ? [' ', btn(t('fix.openHub'), {size: 'sm', icon: 'key', onClick: () => { AIS.tab = 'accounts'; lsSet('devpanel.aiTab', 'accounts'); goPage('ai'); mountAiTabsSync(); }})] : null))));
+        return;
+      }
+      log.appendChild(bubble(x.reply));
+      log.scrollTop = log.scrollHeight;
+      // the first message names the chat: show the new name in the list and the header
+      if (x.chat && x.chat.title !== c.title) { c.title = x.chat.title; hubChat(root); }
+    }
+    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); doSend(); } });
+    main.replaceChildren(
+      h('div', {class: 'row chat-head'}, h('b', null, c.title), proj ? chip(proj.name, {icon: 'grid'}) : null, h('span', {class: 'spacer'}), del),
+      log,
+      h('div', {class: 'chat-compose'}, input, h('div', {class: 'row'}, h('span', {class: 'muted small'}, t('hub.sendHint')), h('span', {class: 'spacer'}), send)));
+    log.scrollTop = log.scrollHeight;
+    input.focus();
+  }
+  function mountAiTabsSync() { aiRender(); }
 
   /* ===================== Shift from XAMPP / Laragon / WAMP ===================== */
   async function openImport() {
@@ -5033,10 +5374,10 @@
       IB.view.list.replaceChildren(emptyState({small: true, icon: 'check-circle', title: IB.errQ ? t('ib.err.noMatch') : t('ib.err.noneTitle'), text: IB.errQ ? null : t('ib.err.noneText')}));
       return;
     }
-    IB.view.list.replaceChildren(...groups.map((g) => errorRow(g, p.path)));
+    IB.view.list.replaceChildren(...groups.map((g) => errorRow(g, p.path, p)));
   }
 
-  function errorRow(g, root) {
+  function errorRow(g, root, proj) {
     const e = g.entry || {};
     const ex = e.exception;
     const when = e.ts ? new Date(e.ts).toISOString() : null;
@@ -5077,6 +5418,7 @@
         ex && e.message && ex.message !== e.message ? h('p', {class: 'ib-err-full', dir: 'auto'}, e.message) : null,
         ex ? h('div', {class: 'row ib-err-ex'}, h('code', {dir: 'ltr'}, ex.class), ex.code && ex.code !== '0' ? chip('code ' + ex.code, {mono: true}) : null, fileLink(ex.file, ex.line, root)) : null,
         rows.length ? h('div', {class: 'ib-stack'}, h('div', {class: 'ib-stack-title'}, icon('layers'), t('ib.err.stack')), rows) : null,
+        e.where ? h('div', {class: 'row'}, aiFixButton(proj, {source: 'error', message: ex ? ex.class.split('\\').pop() + ': ' + ex.message : e.message, file: e.where.file, line: e.where.line, frames: frames.filter((f) => !f.vendor && f.file).map((f) => ({file: f.file, line: f.line}))}), h('span', {class: 'muted small'}, t('fix.hint'))) : null,
         h('details', {class: 'ib-raw'}, h('summary', null, icon('log'), t('ib.err.raw'), raw ? copyButton(raw) : null), h('pre', {dir: 'ltr'}, raw)),
         h('div', {class: 'row muted small'}, g.count > 1 ? t('ib.err.range', {first: g.firstTime || '-', last: g.lastTime || '-', n: g.count}) : (e.time || ''), h('span', {class: 'ltr'}, ' · ' + shortPath(e.file || '', root))));
     };

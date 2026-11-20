@@ -18,7 +18,7 @@ Free, open source, zero dependencies.
 [![PHP 7.4 – 8.5](https://img.shields.io/badge/PHP-7.4%20%E2%80%93%208.5-777BB4.svg?logo=php&logoColor=white)](#features)
 [![MariaDB 10.4 – 12](https://img.shields.io/badge/MariaDB-10.4%20%E2%80%93%2012.x-003545.svg?logo=mariadb&logoColor=white)](#features)
 
-[Quick start](#quick-start) · [Features](#features) · [AI agents](#-ai-agents-claude-code-cursor-copilot-codex) · [Upgrade Lab](#-upgrade-lab-will-it-run-on-php-85) · [Security scan](#-security-scan-before-you-go-live) · [Compared](#php-station-vs-xampp-vs-laragon) · [FAQ](#faq) · [Roman Urdu](#roman-urdu)
+[Quick start](#quick-start) · [Features](#features) · [AI agents](#-ai-agents-claude-code-cursor-copilot-codex) · [Free AI](#-free-ai-built-in-chat-and-fix-with-ai-on-every-error) · [Upgrade Lab](#-upgrade-lab-will-it-run-on-php-85) · [Security scan](#-security-scan-before-you-go-live) · [Compared](#php-station-vs-xampp-vs-laragon) · [FAQ](#faq) · [Roman Urdu](#roman-urdu)
 
 <img src="docs/assets/demo.gif" alt="PHP Station demo: projects switched on with different PHP versions at the same time, then Open from GitHub, the mail catcher, the dump() viewer, grouped laravel.log errors, the DB Time Machine, restore points, several MariaDB servers and one-click repair" width="100%">
 
@@ -38,6 +38,7 @@ Free, open source, zero dependencies.
 | Your AI agent can't see the OTP email, the `dd()` or `laravel.log`, and might wipe the database | **PHP Station speaks MCP.** Claude Code, Cursor, Copilot and Codex read the Inbox, save a restore point first and undo a bad write. |
 | "Will this project still work on PHP 8.5?" | The **Upgrade Lab** runs the same project on both PHP versions and shows every package, file and page that breaks. |
 | A leaked key or a `backup.sql` in `public/` goes live | The **Security scan** checks packages (`composer audit`), the code and the public folder before you deploy. |
+| No budget for an AI subscription | **Free AI built in**: Gemini, Groq, OpenRouter, Mistral … one after the other, and a **Fix with AI** button on every error. |
 
 ## Quick start
 
@@ -113,6 +114,30 @@ Then just ask: *"Test the sign-up form, take the code from the OTP email to veri
 The agent can only do what the panel can, and only on this PC. Tools that change something (restore, undo, start / stop) are marked, so your AI tool asks you first. If PHP Station is closed, it starts by itself without a window.
 
 <br clear="right">
+
+### ✨ Free AI built in: chat, and "Fix with AI" on every error
+
+![Fix with AI: the AI explains that PHP 8.5 now has a built-in array_first() and shows the change as a diff, with an Apply and check button](docs/screenshots/30-ai-fix-diff.png)
+
+No AI subscription needed. PHP Station collects the **free tiers** of the big AI providers in one place and uses them one after the other:
+
+- **Free first.** Google Gemini, Groq, OpenRouter (free models), Mistral, Cerebras and GitHub Models, each with **your own free key** (the card links to the page that gives it), plus **Ollama** on your own PC. Add your own paid account (OpenAI, Anthropic, DeepSeek or any OpenAI-compatible API) and it is used first.
+- **Auto-switch, same conversation.** When Gemini's free limit for the day is used up, Groq answers the next message with the whole chat behind it, and the chat shows *"tried first: Google Gemini (daily limit)"*.
+- **"Fix with AI" next to every error**: in the Inbox, the Upgrade Lab and the Security scan. The AI gets the error and the code around it, and answers with an exact change. You see the **diff** first. **Apply and check** backs up the files, applies the change, runs `php -l` (with the PHP version the error came from) and opens the page again. If the check fails, the files go back and the AI tries once more with what failed. **Undo** is always there.
+- **Your data, your call.** Keys are encrypted with Windows DPAPI and never shown in full. `.env`, `vendor` and `storage` are never sent. Mark a project **"local AI only"** and its code only ever goes to Ollama on your PC.
+
+| | |
+|---|---|
+| ![Chat: Gemini answers the first question; on the second it has reached its daily limit and Groq answers with the same conversation](docs/screenshots/28-ai-chat.png) | ![Fixed: the change is applied and php -l passes on PHP 8.5.9, with an Undo button](docs/screenshots/31-ai-fix-done.png) |
+| **Chat** that carries on when one AI runs out | **Applied and checked**, one click to undo |
+
+<details>
+<summary><b>See the AI accounts page</b></summary>
+
+![AI accounts: free providers with their status, model and today's usage, a switch for paid accounts first, and local-AI-only projects](docs/screenshots/27-ai-accounts.png)
+</details>
+
+<sub>Free tiers have limits per minute and per day that the providers change from time to time, and several of them may use what you send to improve their models. ChatGPT's free website is not an API and cannot be plugged in; OpenAI's API is paid. The screenshots show a demo project with test AI servers.</sub>
 
 ### 🧪 Upgrade Lab: will it run on PHP 8.5?
 
@@ -249,6 +274,7 @@ PHP Station does not throw away what you have: it finds your XAMPP / Laragon ins
 | Import a MySQL 8 dump into MariaDB, with fixes and undo | ✅ | ❌ | ❌ |
 | One-click health check and an issue report without personal details | ✅ | ❌ | ❌ |
 | MCP server for AI agents (errors, mail, dumps, DB undo) | ✅ | ❌ | ❌ |
+| Free AI chat and "Fix with AI" with diff, check and undo | ✅ | ❌ | ❌ |
 | Test a project on another PHP version, page by page | ✅ | ❌ | ❌ |
 | Security scan: `composer audit`, code, public folder | ✅ | ❌ | ❌ |
 | Size of the tool itself | ~1 MB, zero dependencies | ~150 MB+ | ~100 MB+ |
@@ -275,6 +301,18 @@ Add both projects, choose a PHP version on each card (for example 8.0 for a Lara
 <summary><b>How do I connect Claude Code, Cursor or Copilot to my local Laravel app?</b></summary>
 
 Open **Settings → AI agents**, pick your tool and copy the line or the JSON it shows (Claude Code: `claude mcp add php-station ...`; Cursor: `.cursor\mcp.json`; VS Code: `.vscode\mcp.json`; Codex: `config.toml`). The agent then gets 14 tools: errors, caught mail, dumps, the database history with undo, restore points, start / stop and a health check. It picks the project of the folder it works in.
+</details>
+
+<details>
+<summary><b>Is the AI really free? Which AI is used?</b></summary>
+
+PHP Station itself costs nothing and has no AI account of its own. On the **AI** page you paste a free key from Google AI Studio (Gemini), Groq, OpenRouter, Mistral, Cerebras or GitHub; each card links to the page that gives it. PHP Station tries them top to bottom and moves to the next one when a free limit is reached. Ollama runs on your own PC with no key and no limit. If you add your own paid key, that account is used first (you can turn that off), and the provider bills you for it.
+</details>
+
+<details>
+<summary><b>Does "Fix with AI" change my code without asking?</b></summary>
+
+No. It first shows the change as a diff. Only **Apply and check** writes it, after a backup of every file it touches, and then runs `php -l` and opens the page again. A failed check puts the files back. **Undo** restores the backup at any time. `.env`, `vendor` and `storage` are never sent or changed.
 </details>
 
 <details>
@@ -420,6 +458,7 @@ Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBU
 - **Upgrade Lab:** "Kya mera project PHP 8.5 par chalega?" Project dono PHP versions par saath chalta hai, aur har package, har file aur har page ka muqabla ho kar batata hai ke kya tootega.
 - **Security scan:** live karne se pehle packages ki maloom kamzoriyan (`composer audit`), code me leaked keys / SQL injection, aur public folder me `.env`, `.git` ya backup files.
 - **Live link ka QR code:** client phone ke camera se scan kare aur site khul jaye.
+- **Free AI:** Gemini, Groq, OpenRouter, Mistral wagaira ki apni free keys AI page par dein. Aik ki had khatam ho to agla AI wahin se baat aage barhata hai. Har error ke saath **"AI se theek karein"**: pehle tabdeeli dikhti hai, phir backup, phir lagti hai, phir khud check, aur Undo hamesha mojood. Asli data wale project ko "sirf local AI" (Ollama) par rakh sakte hain.
 
 Tafseeli guide: [PEHLE-YE-PARHEIN.txt](PEHLE-YE-PARHEIN.txt).
 
@@ -427,4 +466,4 @@ Tafseeli guide: [PEHLE-YE-PARHEIN.txt](PEHLE-YE-PARHEIN.txt).
 
 Built by **Sami Hussain**, founder of [x8code](https://x8code.com). Released under the [MIT License](LICENSE).
 
-<sub>Keywords: local PHP development environment for Windows, XAMPP alternative, Laragon alternative, multiple PHP versions on Windows, run Laravel projects side by side, Laravel mail catcher, dump() viewer, laravel.log viewer, undo MySQL delete, MariaDB backup and repair, "MySQL shutdown unexpectedly" fix, clone Laravel project from GitHub, localhost control panel, MCP server for PHP and Laravel, Claude Code Laravel, Cursor MCP local database, upgrade Laravel to PHP 8.5, PHP 8.4 deprecations checker, PHP compatibility check, composer audit GUI, PHP security scanner, Laravel security checklist.</sub>
+<sub>Keywords: local PHP development environment for Windows, XAMPP alternative, Laragon alternative, multiple PHP versions on Windows, run Laravel projects side by side, Laravel mail catcher, dump() viewer, laravel.log viewer, undo MySQL delete, MariaDB backup and repair, "MySQL shutdown unexpectedly" fix, clone Laravel project from GitHub, localhost control panel, MCP server for PHP and Laravel, Claude Code Laravel, Cursor MCP local database, upgrade Laravel to PHP 8.5, PHP 8.4 deprecations checker, PHP compatibility check, composer audit GUI, PHP security scanner, Laravel security checklist, free AI for PHP developers, free Gemini Groq OpenRouter in one place, fix Laravel errors with AI, AI code fix with diff and undo, local AI with Ollama for PHP.</sub>
