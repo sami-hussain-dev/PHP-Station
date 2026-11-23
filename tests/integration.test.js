@@ -139,6 +139,25 @@ describe('PHP Station integration', { timeout: 20 * 60 * 1000 }, () => {
     assert.equal(page.headers['access-control-allow-origin'], undefined);
     assert.ok(!page.text.includes('__DEVPANEL_TOKEN__'));
     assert.match(String(goodOrigin.headers['cache-control'] || ''), /no-store/);
+
+    // an unknown page: the deep-sea glitch page (HTML, 404), no script, no token, a link back to the panel
+    const lost = await H.request({ port, urlPath: '/kuch-nahi?x=<script>' });
+    assert.equal(lost.status, 404);
+    assert.match(String(lost.headers['content-type'] || ''), /text\/html/);
+    assert.match(lost.text, /<img class="art" src="\/shark\.svg"/);
+    assert.match(lost.text, /<a class="go" href="\/">/);
+    assert.ok(!/<script/i.test(lost.text));
+    assert.ok(!lost.text.includes(panel.token));
+    assert.match(String(lost.headers['content-security-policy'] || ''), /default-src 'none'/);
+    // the art: an SVG whose own CSP allows its inline style and nothing else
+    const art = await H.request({ port, urlPath: '/shark.svg' });
+    assert.equal(art.status, 200);
+    assert.equal(art.headers['content-type'], 'image/svg+xml');
+    assert.equal(art.headers['content-security-policy'], "default-src 'none'; style-src 'unsafe-inline'");
+    assert.ok(!/<script|href=|xlink:href/i.test(art.text));
+    const logo = await H.request({ port, urlPath: '/logos/gemini.svg' });
+    assert.equal(logo.status, 200);
+    assert.equal(logo.headers['content-type'], 'image/svg+xml');
   });
 
   it('runtimes scan finds PHP 8.5.9, 8.2.12 (relocated php.ini) and 8.0.3', { timeout: 300000 }, async (t) => {
