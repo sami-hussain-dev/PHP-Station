@@ -101,6 +101,10 @@ test('AI: JSON is found in fenced and chatty answers', () => {
   assert.deepStrictEqual(ai.extractJson('Sure!\n```json\n{"a": "x}y", "b": [1]}\n```\nDone'), { a: 'x}y', b: [1] });
   assert.deepStrictEqual(ai.extractJson('Here: {"explanation": "q \\"x\\" {", "edits": []} thanks'), { explanation: 'q "x" {', edits: [] });
   assert.strictEqual(ai.extractJson('no json'), null);
+  // seen live (Pollinations gpt-oss): the last "}" left out
+  assert.deepStrictEqual(ai.extractJson('{"explanation":"x","edits":[{"file":"a.php","search":"s","replace":"r"}]'), { explanation: 'x', edits: [{ file: 'a.php', search: 's', replace: 'r' }] });
+  assert.strictEqual(ai.extractJson('{"a": "unclosed string'), null);
+  assert.strictEqual(ai.extractJson('{"a": [1}'), null);
 });
 
 test('AI: edits must stay inside the project, away from vendor and .env, and match exactly once', () => {
@@ -297,7 +301,7 @@ function fakeProvider(fn) {
     req.on('data', (d) => { b += d; });
     req.on('end', () => {
       const body = b ? JSON.parse(b) : null;
-      seen.push({ url: req.url, body });
+      seen.push({ url: req.url, body, headers: req.headers });
       const r = fn(req, body, seen) || { status: 404, json: { error: { message: 'no' } } };
       res.writeHead(r.status || 200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(r.json));
@@ -374,4 +378,124 @@ test('AI: Ollama not running on this PC is told apart from a provider being down
   const port = await new Promise((r) => { const s = require('net').createServer(); s.listen(0, '127.0.0.1', () => { const n = s.address().port; s.close(() => r(n)); }); });
   const ctx = makeCtx([{ id: 'ol', provider: 'custom', name: 'Ollama', tier: 'local', base: `http://127.0.0.1:${port}/v1`, model: 'qwen', enabled: true, noKey: true }]);
   await assert.rejects(ai.complete(ctx, [{ role: 'user', content: 'x' }]), (e) => e.code === 'NO_AI' && e.extra.tried[0].kind === 'notRunning');
+});
+
+// ------------------------------------------------------------------------------------------ 1.8: a fix that lands, AI without copy-paste
+
+test('AI fix: a search with line numbers or other spaces still finds its one place in the file', () => {
+  const eol = '\n';
+  const text = 'class A {\n    public function x()\n    {\n        return $a\n    }\n}\n';
+  // copied from the numbered view
+  const r1 = ai.locate(text, '   4 >         return $a', '   4 >         return $a;', eol);
+  assert.deepStrictEqual(r1, { search: '        return $a', replace: '        return $a;' });
+  // other indentation: the file's own text is used and the replacement is moved to the file's indentation
+  const r2 = ai.locate(text, '  public function x()\n  {\n      return $a', '  public function x()\n  {\n      return $a;', eol);
+  assert.strictEqual(r2.search, '    public function x()\n    {\n        return $a');
+  assert.strictEqual(r2.replace, '    public function x()\n    {\n        return $a;');
+  // still unique, still refused when not there
+  assert.throws(() => ai.locate('a\n  b\na\n  b\n', 'a\nb', 'x', eol), /found 2 times/);
+  assert.throws(() => ai.locate(text, 'nothing like it', 'x', eol), /found 0 times/);
+  assert.strictEqual(ai.stripLineNumbers('  10   $x = 1;\n  11 >  $y'), '$x = 1;\n $y');
+  assert.strictEqual(ai.stripLineNumbers('$x = 1;\n  11 >  $y'), '$x = 1;\n  11 >  $y');
+});
+
+test('AI: an unusable answer goes back to the same AI once with the reason, before the next AI', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-ai-proj-'));
+  fs.mkdirSync(path.join(root, 'app'));
+  fs.writeFileSync(path.join(root, 'app', 'A.php'), '<?php\n$x = [1,2,3]\necho count($x);\n');
+  const answers = ['{"explanation": "x", "edits": [{"file": "app/A.php", "search": "$x = [1,2]", "replace": "$x = [1,2];"}]}',
+    '{"explanation": "missing ;", "edits": [{"file": "app/A.php", "search": "$x = [1,2,3]", "replace": "$x = [1,2,3];"}]}'];
+  const p = await fakeProvider(() => okReply(answers.shift()));
+  try {
+    const ctx = makeCtx([acct('one', p.base, 'free')]);
+    const logs = [];
+    const r = await ai.complete(ctx, [{ role: 'user', content: 'fix' }], { log: (k, t) => logs.push(t), accept: (t) => ai.validateEdits(root, ai.extractJson(t)) });
+    assert.strictEqual(r.by.id, 'one');
+    assert.deepStrictEqual(r.switched, []);
+    assert.strictEqual(r.value[0].replace, '$x = [1,2,3];');
+    const second = p.seen[1].body.messages;
+    assert.strictEqual(second[second.length - 2].role, 'assistant');
+    assert.match(second[second.length - 1].content, /could not be used: .*found 0 times/);
+    assert.ok(logs.some((l) => /asking the same AI again/.test(l)), logs.join('\n'));
+  } finally { p.srv.close(); }
+});
+
+test('AI: Pollinations answers with no key and no login; Gemini thinks "low"; a refused effort is learned', async () => {
+  const pol = ai.FREE.find((x) => x.id === 'pollinations');
+  assert.ok(pol && pol.noKey && pol.tier === 'free');
+  const store = { paidFirst: true, accounts: [
+    { id: 'pollinations', provider: 'pollinations', tier: 'free', enabled: true },
+    { id: 'gemini', provider: 'gemini', tier: 'free', enabled: true },
+  ] };
+  assert.deepStrictEqual(ai.order(store).map((a) => a.id), ['pollinations'], 'ready with no key at all');
+  assert.strictEqual(ai.requestBody('gemini-3.8-flash', [], { maxTokens: 10, temperature: 0.2, effort: 'low' }).reasoning_effort, 'low');
+  assert.ok(!('reasoning_effort' in ai.requestBody('x', [], { maxTokens: 10, temperature: 0.2, effort: 'low', compat: { noEffort: true } })));
+  assert.strictEqual(ai.paramFix(400, 'Invalid value for reasoning_effort'), 'noEffort');
+  assert.strictEqual(ai.classifyError(429, 'qwen/qwen3-coder:free is temporarily rate-limited upstream').kind, 'busy');
+  // only the anonymous models of its list are picked
+  const p = await fakeProvider((req) => (req.url.endsWith('/models') ? { status: 200, json: [{ name: 'openai-large', tier: 'seed' }, { name: 'openai-fast', tier: 'anonymous' }] } : okReply('hi')));
+  try {
+    const ctx = makeCtx([{ id: 'pollinations', provider: 'pollinations', name: 'P', tier: 'free', base: p.base, model: '', enabled: true }]);
+    const r = await ai.complete(ctx, [{ role: 'user', content: 'x' }]);
+    assert.strictEqual(r.by.model, 'openai-fast');
+  } finally { p.srv.close(); }
+});
+
+test('AI: OpenRouter login (PKCE) gives the key back by itself; a forged or reused login is refused', { skip: process.platform !== 'win32' }, async () => {
+  const crypto = require('crypto');
+  let challenge = null;
+  const key = `sk-or-v1-${'a'.repeat(64)}`;
+  const p = await fakeProvider((req, body) => {
+    if (req.url === '/v1/auth/keys') {
+      const ok = body.code === 'good-code' && crypto.createHash('sha256').update(body.code_verifier).digest('base64url') === challenge && body.code_challenge_method === 'S256';
+      return ok ? { status: 200, json: { key } } : { status: 403, json: { error: 'Invalid code or code_verifier' } };
+    }
+    if (req.url.endsWith('/models')) return { status: 200, json: { data: [{ id: 'qwen/qwen3-coder:free' }] } };
+    return okReply('OK');
+  });
+  try {
+    const ctx = makeCtx([{ id: 'openrouter', provider: 'openrouter', name: 'OpenRouter', tier: 'free', base: p.base, model: '', enabled: false }]);
+    ctx.port = 7999;
+    ctx.openrouterExchange = `${p.base}/auth/keys`;
+    const u = new URL(ai.startOpenRouterLogin(ctx).url);
+    assert.strictEqual(u.origin + u.pathname, 'https://openrouter.ai/auth');
+    assert.strictEqual(u.searchParams.get('callback_url'), 'http://localhost:7999/oauth/openrouter');
+    assert.strictEqual(u.searchParams.get('code_challenge_method'), 'S256');
+    assert.strictEqual(u.searchParams.get('key_label'), 'PHP Station by x8code');
+    challenge = u.searchParams.get('code_challenge');
+    const state = u.searchParams.get('state');
+    await assert.rejects(ai.finishOpenRouterLogin(ctx, { code: 'good-code', state: 'forged' }), (e) => e.code === 'OAUTH');
+    const r = await ai.finishOpenRouterLogin(ctx, { code: 'good-code', state });
+    assert.strictEqual(r.account.status, 'ready');
+    assert.strictEqual(r.account.enabled, true);
+    assert.strictEqual(r.account.keyHint, '••••aaaa');
+    assert.ok(r.test.ok, JSON.stringify(r.test));
+    assert.ok(p.seen.some((s) => s.url.endsWith('/chat/completions')));
+    // the same state works once only; the key never reaches the page
+    await assert.rejects(ai.finishOpenRouterLogin(ctx, { code: 'good-code', state }), (e) => e.code === 'OAUTH');
+    assert.ok(!JSON.stringify(ai.overview(ctx)).includes('a'.repeat(64)));
+    // never a paid model on the free account: one typed by hand is dropped, a ":free" one is sent
+    ai.update(ctx, 'openrouter', { model: 'anthropic/claude-opus-4' });
+    const before = p.seen.length;
+    await ai.complete(ctx, [{ role: 'user', content: 'hi' }]);
+    const sent = p.seen.slice(before).filter((s) => s.url.endsWith('/chat/completions')).map((s) => s.body.model);
+    assert.deepStrictEqual(sent, ['qwen/qwen3-coder:free']);
+    // every request is credited to PHP Station on OpenRouter (rankings + app page)
+    const chat = p.seen.filter((s) => s.url.endsWith('/chat/completions')).pop();
+    assert.strictEqual(chat.headers['http-referer'], 'https://github.com/sami-hussain-dev/PHP-Station');
+    assert.strictEqual(chat.headers['x-openrouter-title'], 'PHP Station by x8code');
+  } finally { p.srv.close(); }
+});
+
+test('AI: keys already on this PC are found (env, GitHub CLI); only key-shaped values; hints only', async () => {
+  const ctx = makeCtx([]);
+  const env = { GROQ_API_KEY: `gsk_${'b'.repeat(40)}`, GEMINI_API_KEY: 'not-a-key', CEREBRAS_API_KEY: '' };
+  const found = await ai.findKeys(ctx, { env, ghToken: `gho_${'c'.repeat(36)}` });
+  assert.deepStrictEqual(found.map((f) => [f.id, f.source, f.hint]), [['groq', '%GROQ_API_KEY%', '••••bbbb'], ['github', 'GitHub CLI (gh auth login)', '••••cccc']]);
+  assert.ok(ai.KEY_RE.gemini.test(`AIza${'x'.repeat(35)}`));
+  assert.ok(!ai.KEY_RE.groq.test('gsk_short'));
+  const view = ai.overview(ctx).accounts;
+  assert.strictEqual(view.find((a) => a.id === 'gemini').canCatch, true);
+  assert.strictEqual(view.find((a) => a.id === 'pollinations').canCatch, false);
+  assert.strictEqual(view.find((a) => a.id === 'openrouter').login, 'openrouter');
 });

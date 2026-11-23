@@ -1171,11 +1171,15 @@
     if (S.connected === ok) return;
     S.connected = ok;
     if (ok) {
+      hideConnGlitch();
       hideBanner('offline');
       toast('success', t('conn.back'));
     } else {
       showBanner('offline', 'bad', t('conn.lost'),
         {label: t('conn.retryNow'), icon: 'refresh', onClick: () => refresh({manual: true})});
+      // a short blip only shows the banner; still gone after 2.5 s -> the full glitch page
+      clearTimeout(connGlitchTimer);
+      connGlitchTimer = setTimeout(() => { if (!S.connected) showConnGlitch(); }, 2500);
     }
     updateFooter();
   }
@@ -1278,8 +1282,12 @@
   function buildChrome() {
     const nav = h('nav', {class: 'nav', 'aria-label': t('nav.aria')});
     for (const p of PAGES) {
-      nav.appendChild(h('a', {class: 'nav-item', href: '#/' + p.id, dataset: {page: p.id}},
-        icon(p.icon), h('span', null, pageLabel(p.id)), h('span', {class: 'nav-count', id: 'nav-count-' + p.id})));
+      // the AI page stands out: a silver mark and a "Free" badge
+      const isAi = p.id === 'ai';
+      nav.appendChild(h('a', {class: ['nav-item', isAi && 'nav-ai'], href: '#/' + p.id, dataset: {page: p.id}},
+        isAi ? h('span', {class: 'nav-ai-mark'}, icon(p.icon)) : icon(p.icon), h('span', null, pageLabel(p.id)),
+        isAi ? h('span', {class: 'nav-badge'}, t('nav.aiBadge')) : null,
+        h('span', {class: 'nav-count', id: 'nav-count-' + p.id})));
     }
     byId('sidebar').replaceChildren(
       h('a', {class: 'brand', href: '#/projects', 'aria-label': 'PHP Station — ' + pageLabel('projects')},
@@ -1401,6 +1409,7 @@
   function showPage(id) {
     closeMenu();
     S.page = id;
+    S.crashedPage = null; // opening a page again gives it a new chance
     lsSet('devpanel.page', id);
     for (const a of document.querySelectorAll('.nav-item')) {
       if (a.dataset.page === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
@@ -1422,14 +1431,27 @@
       S.mountedPage = null;
       return;
     }
-    if (S.mountedPage !== S.page) {
-      const prev = S.mountedPage && pageImpl[S.mountedPage];
-      if (prev && prev.unmount) prev.unmount();
-      main.replaceChildren();
-      pageImpl[S.page].mount(main);
-      S.mountedPage = S.page;
+    if (S.crashedPage === S.page) return; // its glitch page stays until "Try again" or another page
+    try {
+      if (S.mountedPage !== S.page) {
+        const prev = S.mountedPage && pageImpl[S.mountedPage];
+        if (prev && prev.unmount) prev.unmount();
+        main.replaceChildren();
+        pageImpl[S.page].mount(main);
+        S.mountedPage = S.page;
+      }
+      pageImpl[S.page].update(S.state);
+    } catch (e) {
+      // a page that throws shows the glitch page, never a half-drawn page or a stack trace
+      const stack = e && e.stack ? e.stack : String(e);
+      recordError(stack);
+      S.crashedPage = S.page;
+      try { if (pageImpl[S.page].unmount) pageImpl[S.page].unmount(); } catch (e2) { /* already broken */ }
+      S.mountedPage = null;
+      const retry = btn(t('gl.retry'), {kind: 'primary', icon: 'refresh', onClick: () => { S.crashedPage = null; renderPage(); }});
+      const reload = btn(t('gl.reload'), {kind: 'ghost', icon: 'refresh', onClick: () => location.reload()});
+      main.replaceChildren(glitchView({r: {code: 'INTERNAL'}, title: t('gl.page.title'), text: t('gl.page.text'), details: stack, actions: [retry, reload]}));
     }
-    pageImpl[S.page].update(S.state);
   }
   function renderAll() {
     if (!S.state) return;
@@ -1531,6 +1553,52 @@
 
   /** Common: show a failed API response as a toast. */
   function failToast(title, r) { toast('error', title, errorText(r)); }
+
+  /* ===================== Glitch: the friendly error view (deep sea, a shark biting the cable) ===================== */
+  // The art is kept in memory as a data: URL while the server answers, so the "connection lost" page can
+  // still show it once the server is gone.
+  let sharkSrc = '/shark.svg';
+  fetch('/shark.svg', {cache: 'no-cache'})
+    .then((r) => (r.ok ? r.text() : null))
+    .then((svg) => { if (svg && svg.startsWith('<svg')) sharkSrc = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); })
+    .catch(() => { /* the plain URL stays */ });
+  /** What went wrong in plain words, from an api() result or a job: {title, text}. */
+  function glitchWords(r) {
+    const code = r && r.code;
+    if (code === 'NETWORK') return {title: t('gl.net.title'), text: t('gl.net.text')};
+    if (code === 'NO_AI') return {title: t('gl.ai.title'), text: t('gl.ai.text')};
+    if (code === 'INTERNAL' || code === 'BAD_RESPONSE') return {title: t('gl.sys.title'), text: t('gl.sys.text')};
+    return {title: t('gl.bad.title'), text: t('gl.bad.text')};
+  }
+  /**
+   * glitchView({r, title, text, details, actions, compact}): the shark art, a plain title and text, and buttons.
+   * The technical text (the error message, a stack) is never shown up front: it is folded under "Details",
+   * with a copy button for a bug report. details: '' leaves the fold out.
+   */
+  function glitchView(o) {
+    const words = glitchWords(o.r);
+    const raw = o.details != null ? String(o.details) : (o.r ? errorText(o.r) : '');
+    return h('section', {class: ['glitch', o.compact && 'is-compact'], role: 'alert'},
+      h('img', {class: 'glitch-art', src: sharkSrc, alt: '', width: 640, height: 360, draggable: 'false'}),
+      h('div', {class: 'glitch-body'},
+        h('h3', {class: 'glitch-title'}, o.title || words.title),
+        h('p', {class: 'glitch-text'}, o.text || words.text),
+        o.actions && o.actions.length ? h('div', {class: 'glitch-actions'}, o.actions) : null,
+        raw ? h('details', {class: 'glitch-more'}, h('summary', null, icon('code'), h('span', null, t('gl.details'))),
+          h('div', {class: 'glitch-raw'}, h('pre', {dir: 'ltr'}, raw), copyButton(raw))) : null));
+  }
+  /** Server not answering: after a short moment the whole panel shows the glitch page until it is back. */
+  let connGlitchTimer = null;
+  function showConnGlitch() {
+    if (byId('conn-glitch')) return;
+    const retry = btn(t('gl.retry'), {kind: 'primary', icon: 'refresh', onClick: () => refresh({manual: true})});
+    document.body.appendChild(h('div', {class: 'glitch-overlay', id: 'conn-glitch'}, glitchView({r: {code: 'NETWORK'}, details: '', actions: [retry]})));
+  }
+  function hideConnGlitch() {
+    clearTimeout(connGlitchTimer);
+    const el = byId('conn-glitch');
+    if (el) el.remove();
+  }
 
   /* ===================== Shared helpers for pages ===================== */
   function verParts(v) {
@@ -1785,7 +1853,10 @@
         bar.setAttribute('aria-busy', String(running));
         if (!running) {
           const parts = [];
-          if (job.status === 'failed') parts.push(callout('bad', t('job.notDone'), jobErrorText(job)));
+          if (job.status === 'failed') {
+            // opts.glitch: the friendly glitch view (raw error folded away) instead of the plain red callout
+            parts.push(opts && opts.glitch ? glitchView({r: {code: jobCode(job)}, details: jobErrorText(job), compact: true}) : callout('bad', t('job.notDone'), jobErrorText(job)));
+          }
           const custom = opts && opts.renderResult ? opts.renderResult(job) : null;
           if (custom) parts.push(custom); else parts.push(...genericResult(job));
           resultArea.replaceChildren(...parts.filter(Boolean));
@@ -4391,7 +4462,7 @@
     if (!yes) return;
     const r = await api('POST', '/api/projects/' + enc(p.id) + '/ai-fix', payload);
     if (!r.ok || !r.jobId) return failToast(t('fix.title'), r);
-    showJob(r.jobId, {title: t('fix.title') + ' — ' + p.name, icon: 'sparkle', size: 'lg', quietCodes: ['NO_AI'],
+    showJob(r.jobId, {title: t('fix.title') + ' — ' + p.name, icon: 'sparkle', size: 'lg', glitch: true, quietCodes: ['NO_AI'],
       renderResult: (job) => (job.status === 'done' && job.result ? fixProposal(p, job.result) : job.code === 'NO_AI' ? h('div', {class: 'row'}, btn(t('fix.openHub'), {size: 'sm', icon: 'key', onClick: () => { closeAllModals(); AIS.tab = 'accounts'; lsSet('devpanel.aiTab', 'accounts'); goPage('ai'); aiRender(); }})) : null)});
   }
   function closeAllModals() { for (const m of modalStack.slice()) m.close(); }
@@ -4420,7 +4491,7 @@
         setBusy(applyBtn, false);
         if (!r.ok || !r.jobId) return failToast(t('fix.applyFail'), r);
         closeAllModals();
-        showJob(r.jobId, {title: t('fix.applying') + ' — ' + p.name, icon: 'sparkle', size: 'lg', renderResult: (job) => (job.result ? fixOutcome(p, job.result) : null)});
+        showJob(r.jobId, {title: t('fix.applying') + ' — ' + p.name, icon: 'sparkle', size: 'lg', glitch: true, renderResult: (job) => (job.result ? fixOutcome(p, job.result) : null)});
       }});
       box.append(h('div', {class: 'row'}, applyBtn, h('span', {class: 'muted small'}, t('fix.applyHint'))));
     }
@@ -4445,14 +4516,16 @@
   }
 
   /* ===================== AI page: chat + accounts (free first, auto-switch) ===================== */
-  const AIS = {tab: lsGet('devpanel.aiTab') || 'chat', chatId: null, root: null};
-  pageImpl.ai = {mount: mountAi, update: () => {}, unmount() { AIS.root = null; }};
+  // chatId: null = open the latest chat, 'new' = a new (empty) chat; next = the AI that answers next
+  const AIS = {tab: lsGet('devpanel.aiTab') || 'chat', chatId: null, root: null, tabs: null, next: null, pending: null};
+  pageImpl.ai = {mount: mountAi, update: () => {}, unmount() { AIS.root = null; AIS.tabs = null; }};
   function mountAi(root) {
     AIS.root = h('div', {class: 'ai-body'});
     const tabs = h('div', {class: 'seg', role: 'tablist'});
+    AIS.tabs = tabs;
     for (const x of [{id: 'chat', icon: 'sparkle'}, {id: 'accounts', icon: 'key'}]) {
       const b = h('button', {type: 'button', class: 'seg-btn', role: 'tab', dataset: {tab: x.id}, 'aria-pressed': String(AIS.tab === x.id)}, icon(x.icon), h('span', null, t('hub.tab.' + x.id)));
-      b.addEventListener('click', () => { AIS.tab = x.id; lsSet('devpanel.aiTab', x.id); for (const c of tabs.children) c.setAttribute('aria-pressed', String(c.dataset.tab === x.id)); aiRender(); });
+      b.addEventListener('click', () => aiShowTab(x.id));
       tabs.appendChild(b);
     }
     root.append(h('div', {class: 'toolbar'}, tabs), AIS.root);
@@ -4468,7 +4541,7 @@
     root.replaceChildren(h('div', {class: 'row muted'}, spinner(), t('common.loading')));
     const r = await api('GET', '/api/ai');
     if (!AIS.root || AIS.tab !== 'accounts') return;
-    if (!r.ok) { root.replaceChildren(callout('bad', null, errorText(r))); return; }
+    if (!r.ok) { root.replaceChildren(glitchView({r, actions: [btn(t('gl.retry'), {kind: 'primary', icon: 'refresh', onClick: () => aiRender()})]})); return; }
     const paidSw = makeSwitch({checked: !!r.paidFirst, label: t('hub.paidFirst'), onToggle: async (v, el) => {
       el.setAttribute('aria-checked', String(v));
       const x = await api('POST', '/api/ai/settings', {paidFirst: v});
@@ -4487,18 +4560,112 @@
       return ck.el;
     }));
     root.replaceChildren(h('div', {class: 'stack'},
-      callout('info', t('hub.howTitle'), t('hub.how')),
-      h('div', {class: 'row'}, h('div', {class: 'row'}, paidSw, h('span', null, t('hub.paidFirstText'))), h('span', {class: 'spacer'}), addBtn),
-      r.next ? h('div', {class: 'row muted small'}, icon('sparkle'), t('hub.nextUp', {name: r.next.name})) : callout('warn', null, t('hub.noneReady')),
+      quickConnect(list),
+      r.next ? h('div', {class: 'hub-next'}, h('span', {class: 'dot dot-ok'}), h('span', null, t('hub.nextUp', {name: r.next.name}))) : callout('warn', null, t('hub.noneReady')),
+      h('details', {class: 'hub-how'}, h('summary', null, icon('info'), h('span', null, t('hub.howTitle'))), h('p', null, t('hub.how'))),
       h('h3', {class: 'rep-h'}, icon('sparkle'), h('span', null, t('hub.freeTitle'))),
       h('div', {class: 'hub-grid'}, free.map((a) => accountCard(a))),
-      h('h3', {class: 'rep-h'}, icon('key'), h('span', null, t('hub.paidTitle'))),
+      h('div', {class: 'row hub-paid-head'}, h('h3', {class: 'rep-h'}, icon('key'), h('span', null, t('hub.paidTitle'))), h('span', {class: 'spacer'}), addBtn),
+      h('div', {class: 'row'}, paidSw, h('span', {class: 'small'}, t('hub.paidFirstText'))),
       paid.length ? h('div', {class: 'hub-grid'}, paid.map((a) => accountCard(a))) : h('p', {class: 'muted'}, t('hub.noPaid')),
       h('h3', {class: 'rep-h'}, icon('lock'), h('span', null, t('hub.localOnlyTitle'))),
       h('p', {class: 'muted small'}, t('hub.localOnlyText')),
       localBox));
   }
+  /** Top of the accounts tab: AI that works with no key, a one-click login, keys already on this PC. */
+  function quickConnect(list) {
+    const pol = list.find((a) => a.provider === 'pollinations');
+    const or = list.find((a) => a.login === 'openrouter');
+    const orReady = or && or.keyHint;
+    const loginBtn = or ? btn(orReady ? t('hub.qc.orAgain') : t('hub.qc.or'), {kind: orReady ? 'ghost' : 'primary', icon: 'key', onClick: (ev) => loginOpenRouter(ev.currentTarget)}) : null;
+    const findBtn = btn(t('hub.qc.find'), {kind: 'ghost', icon: 'search', onClick: (ev) => importFoundKeys(ev.currentTarget)});
+    const step = (n, title, text, foot) => h('div', {class: 'hub-quick-step'},
+      h('div', {class: 'hub-step-head'}, h('span', {class: 'hub-num'}, String(n)), h('b', null, title)),
+      h('p', {class: 'muted small'}, text), h('div', {class: 'row hub-step-foot'}, foot));
+    return h('section', {class: 'card hub-quick'},
+      h('div', {class: 'hub-quick-head'},
+        h('div', {class: 'hub-quick-mark', 'aria-hidden': 'true'}, icon('sparkle')),
+        h('div', null, h('h3', {class: 'hub-quick-title'}, t('hub.qc.title')), h('p', {class: 'muted small'}, t('hub.qc.sub')))),
+      h('div', {class: 'hub-quick-row'},
+        step(1, t('hub.qc.noLogin'), t('hub.qc.noLoginD'),
+          pol ? chip(pol.enabled ? t('hub.st.' + pol.status, {at: pol.until ? new Date(pol.until).toLocaleTimeString() : ''}) : t('hub.st.off', {at: ''}), {kind: pol.enabled && pol.status === 'ready' ? 'ok' : 'warn'}) : null),
+        step(2, t('hub.qc.oneLogin'), t('hub.qc.oneLoginD'), [loginBtn, orReady ? chip(t('hub.qc.connected'), {kind: 'ok'}) : null]),
+        step(3, t('hub.qc.more'), t('hub.qc.moreD'), findBtn)));
+  }
+  async function loginOpenRouter(b) {
+    setBusy(b, true);
+    const r = await api('POST', '/api/ai/login/openrouter', {});
+    setBusy(b, false);
+    if (!r.ok || !r.url) return failToast(t('hub.qc.orFail'), r);
+    window.open(r.url, '_blank', 'noopener');
+    const before = (arr((await api('GET', '/api/ai')).accounts).find((a) => a.login === 'openrouter') || {}).keyHint || null;
+    let stop = false;
+    const m = openModal({title: t('hub.qc.or'), icon: 'key', size: 'sm',
+      body: h('div', {class: 'stack'}, h('div', {class: 'row'}, spinner(), h('span', null, t('hub.qc.orWait'))), h('p', {class: 'muted small'}, t('hub.qc.orWaitD'))),
+      actions: [{label: t('common.cancel'), value: null}], onClose: () => { stop = true; }});
+    const until = Date.now() + 10 * 60e3;
+    while (!stop && Date.now() < until) {
+      await new Promise((res) => setTimeout(res, 2500));
+      if (stop) break;
+      const x = await api('GET', '/api/ai');
+      const a = x.ok && arr(x.accounts).find((y) => y.login === 'openrouter');
+      if (a && a.keyHint && a.keyHint !== before) {
+        m.close();
+        toast(a.status === 'ready' ? 'success' : 'warn', t('hub.qc.orDone'), a.name + (a.model ? ' · ' + a.model : ''));
+        aiRender();
+        return;
+      }
+    }
+  }
+  async function importFoundKeys(b) {
+    setBusy(b, true);
+    const r = await api('GET', '/api/ai/found-keys');
+    setBusy(b, false);
+    if (!r.ok) return failToast(t('hub.qc.find'), r);
+    const found = arr(r.found);
+    if (!found.length) return toast('info', t('hub.qc.findNone'), t('hub.qc.findNoneD'), {duration: 8000});
+    const yes = await confirmDialog({title: t('hub.qc.find'), icon: 'search', size: 'md', message: t('hub.qc.findQ', {n: found.length}),
+      details: h('div', {class: 'stack'}, found.map((f) => h('div', {class: 'row'}, icon('key'), h('b', null, f.name), h('span', {class: 'mono small', dir: 'ltr'}, f.hint), h('span', {class: 'muted small', dir: 'ltr'}, f.source)))),
+      confirmLabel: t('hub.qc.findUse'), confirmIcon: 'check'});
+    if (!yes) return;
+    setBusy(b, true);
+    const x = await api('POST', '/api/ai/found-keys/import', {ids: found.map((f) => f.id)});
+    setBusy(b, false);
+    if (!x.ok) return failToast(t('hub.qc.find'), x);
+    for (const i of arr(x.imported)) {
+      if (i.test && i.test.ok) toast('success', t('hub.testOk', {name: i.name}), t('hub.testOkMsg', {model: i.test.model, ms: i.test.ms}));
+      else toast('error', t('hub.testFail', {name: i.name}), (i.test && i.test.error) || '', {duration: 9000});
+    }
+    aiRender();
+  }
+  /** "Connect": opens the key page; the key the user copies there is picked up from the clipboard. */
+  async function catchKeyFor(a) {
+    if (a.keyUrl) window.open(a.keyUrl, '_blank', 'noopener');
+    let cancelled = false;
+    const m = openModal({title: t('hub.catch.title', {name: a.name}), icon: 'key', size: 'sm',
+      body: h('div', {class: 'stack'},
+        h('ol', {class: 'hub-steps'}, h('li', null, t('hub.catch.s1')), h('li', null, t('hub.catch.s2')), h('li', null, t('hub.catch.s3'))),
+        h('div', {class: 'row muted'}, spinner(), h('span', null, t('hub.catch.wait')))),
+      actions: [{label: t('common.cancel'), value: null}],
+      onClose: () => { cancelled = true; api('POST', '/api/ai/catch-stop', {}); }});
+    const r = await api('POST', '/api/ai/accounts/' + enc(a.id) + '/catch-key', {});
+    if (cancelled) return;
+    m.close();
+    if (!r.ok) return failToast(t('hub.saveFail'), r);
+    if (!r.caught) return toast('warn', t('hub.catch.none'), t('hub.catch.noneD'), {duration: 9000});
+    if (r.test && r.test.ok) toast('success', t('hub.testOk', {name: a.name}), t('hub.testOkMsg', {model: r.test.model, ms: r.test.ms}));
+    else toast('error', t('hub.testFail', {name: a.name}), (r.test && (r.test.kind ? t('hub.kind.' + r.test.kind) + ' — ' : '') + (r.test && r.test.error || '')), {duration: 9000});
+    aiRender();
+  }
   const STATUS_KIND = {ready: 'ok', noKey: null, off: null, auth: 'bad', cooling: 'warn', quota: 'warn', credit: 'bad'};
+  // The provider's own logo (public/logos, served by the panel); a custom API gets its first letters.
+  const PROVIDER_LOGO = {gemini: 'gemini', groq: 'groq', openrouter: 'openrouter', 'openrouter-paid': 'openrouter', mistral: 'mistral', cerebras: 'cerebras',
+    github: 'github', ollama: 'ollama', pollinations: 'pollinations', openai: 'openai', anthropic: 'anthropic', deepseek: 'deepseek'};
+  function providerLogo(provider, name) {
+    const file = PROVIDER_LOGO[provider];
+    return h('span', {class: 'hub-logo', 'aria-hidden': 'true'},
+      file ? h('img', {src: '/logos/' + file + '.svg', alt: '', width: 22, height: 22, draggable: 'false'}) : String(name || provider || '?').slice(0, 2));
+  }
   function accountCard(a) {
     const statusText = a.until ? t('hub.st.' + a.status, {at: new Date(a.until).toLocaleTimeString()}) : t('hub.st.' + a.status, {at: ''});
     const model = h('input', {class: 'input mono', value: a.model, placeholder: t('hub.modelAuto'), spellcheck: 'false', autocomplete: 'off', dir: 'ltr'});
@@ -4553,11 +4720,26 @@
       aiRender();
     }}) : null;
     const getKey = a.keyUrl ? h('a', {href: a.keyUrl, target: '_blank', rel: 'noopener noreferrer', class: 'small hub-link'}, icon('external'), ' ', a.noKey ? t('hub.getOllama') : a.tier === 'paid' ? t('hub.getKeyPaid') : t('hub.getKey')) : null;
+    // not connected yet: one big way in ("Log in" / "Connect"), the key box folded away under it.
+    // connected: the model and today's usage; changing the key is folded away.
+    const hasKey = a.noKey || !!a.keyHint;
+    const connectBtns = !a.noKey && (a.canCatch || a.login) ? h('div', {class: 'row hub-connect'},
+      a.login === 'openrouter' ? btn(t('hub.qc.or'), {size: 'sm', kind: a.keyHint ? 'ghost' : 'primary', icon: 'key', onClick: (ev) => loginOpenRouter(ev.currentTarget)}) : null,
+      a.canCatch ? btn(t('hub.catch.btn'), {size: 'sm', kind: a.keyHint || a.login ? 'ghost' : 'primary', icon: 'link', title: t('hub.catch.btnTitle'), onClick: () => catchKeyFor(a)}) : null) : null;
+    const keyRow = a.noKey ? null : h('div', {class: 'row hub-key'}, key, saveKey);
+    let keyPart;
+    if (a.noKey) keyPart = h('p', {class: 'muted small'}, t('hub.noKeyNeeded'));
+    else if (!connectBtns) keyPart = keyRow;
+    else if (a.keyHint) keyPart = h('details', {class: 'hub-more'}, h('summary', null, icon('key'), h('span', null, t('hub.changeKey')), h('span', {class: 'mono muted'}, a.keyHint)), h('div', {class: 'stack-sm'}, connectBtns, keyRow));
+    else keyPart = h('div', {class: 'stack-sm'}, connectBtns, h('details', {class: 'hub-more'}, h('summary', null, icon('pencil'), h('span', null, t('hub.pasteKey'))), keyRow));
     return h('section', {class: ['card', 'hub-card', 'is-' + a.status]},
-      h('div', {class: 'hub-head'}, h('div', {class: 'hub-title'}, h('b', null, a.name), h('div', {class: 'hub-chips'}, tierChip(a.tier), chip(statusText, {kind: STATUS_KIND[a.status] || null}))), h('div', {class: 'hub-ctrls'}, move('up'), move('down'), enabled, remove)),
-      a.noKey ? h('p', {class: 'muted small'}, t('hub.noKeyNeeded')) : h('div', {class: 'row hub-key'}, key, saveKey),
-      h('div', {class: 'row hub-model'}, model, loadModels), modelList,
-      h('div', {class: 'row muted small'}, t('hub.usage', {n: a.usage.requests, tok: fmtNum(a.usage.tokens)}), h('span', {class: 'spacer'}), getKey, testBtn),
+      h('div', {class: 'hub-head'},
+        providerLogo(a.provider, a.name),
+        h('div', {class: 'hub-title'}, h('b', null, a.name), h('div', {class: 'hub-chips'}, tierChip(a.tier), chip(statusText, {kind: STATUS_KIND[a.status] || null}))),
+        h('div', {class: 'hub-ctrls'}, move('up'), move('down'), enabled, remove)),
+      keyPart,
+      hasKey ? [h('div', {class: 'row hub-model'}, model, loadModels), modelList] : null,
+      h('div', {class: 'row muted small hub-foot'}, hasKey ? t('hub.usage', {n: a.usage.requests, tok: fmtNum(a.usage.tokens)}) : null, h('span', {class: 'spacer'}), getKey, hasKey ? testBtn : null),
       a.lastError && a.status !== 'ready' ? h('div', {class: 'muted small hub-err', dir: 'ltr'}, a.lastError) : null);
   }
   function fmtNum(n) { const v = Number(n) || 0; return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(v); }
@@ -4595,29 +4777,51 @@
   }
 
   // ----- chat
+  // Starters on an empty chat: a click puts the question in the box (it is not sent by itself).
+  const CHAT_STARTERS = [
+    {icon: 'bug', key: 'hub.sug.error'},
+    {icon: 'db', key: 'hub.sug.query'},
+    {icon: 'code', key: 'hub.sug.laravel'},
+    {icon: 'shield', key: 'hub.sug.review'}
+  ];
+  /** Switch the AI page to a tab (chat / accounts) without leaving the page. */
+  function aiShowTab(id) {
+    AIS.tab = id;
+    lsSet('devpanel.aiTab', id);
+    if (AIS.tabs) for (const c of AIS.tabs.children) c.setAttribute('aria-pressed', String(c.dataset.tab === id));
+    aiRender();
+  }
+  /** Which AI answers next (from the router), clickable to the accounts tab. */
+  function aiPill() {
+    const n = AIS.next;
+    const logo = n && PROVIDER_LOGO[n.provider];
+    const pill = chip(n ? t('hub.willAnswer', {name: n.name}) : t('hub.noneReadyShort'), {kind: n ? null : 'warn', dot: logo ? null : n ? 'dot-ok' : 'dot-warn', cls: 'chat-ai', title: t('hub.tab.accounts'), onClick: () => aiShowTab('accounts')});
+    if (logo) pill.insertBefore(h('img', {class: 'chat-ai-logo', src: '/logos/' + logo + '.svg', alt: '', width: 14, height: 14}), pill.firstChild);
+    return pill;
+  }
   async function hubChat(root) {
     const listBox = h('div', {class: 'chat-list'});
     const main = h('div', {class: 'chat-main'});
-    const projSel = h('select', {class: 'select', 'aria-label': t('hub.chatProject')},
-      h('option', {value: ''}, t('hub.noProject')), arr(S.state && S.state.projects).map((p) => h('option', {value: p.id}, p.name)));
-    const newBtn = btn(t('hub.newChat'), {kind: 'primary', icon: 'plus', onClick: async () => {
-      const r = await api('POST', '/api/ai/chats', {projectId: projSel.value || null});
-      if (!r.ok) return failToast(t('hub.chatFail'), r);
-      AIS.chatId = r.chat.id;
-      hubChat(root);
-    }});
-    root.replaceChildren(h('div', {class: 'chat-wrap'}, h('aside', {class: 'chat-side'}, newBtn, projSel, listBox), main));
-    const r = await api('GET', '/api/ai/chats');
-    if (!r.ok) { listBox.replaceChildren(callout('bad', null, errorText(r))); return; }
+    const newBtn = btn(t('hub.newChat'), {kind: 'primary', icon: 'plus', className: 'chat-new', onClick: () => { AIS.chatId = 'new'; hubChat(root); }});
+    root.replaceChildren(h('div', {class: 'chat-wrap'},
+      h('aside', {class: 'chat-side'}, newBtn, h('div', {class: 'chat-side-label'}, t('hub.recent')), listBox),
+      main));
+    const [r, hub] = await Promise.all([api('GET', '/api/ai/chats'), api('GET', '/api/ai')]);
+    AIS.next = hub.ok ? hub.next || null : null;
+    if (!r.ok) {
+      listBox.replaceChildren();
+      main.replaceChildren(h('div', {class: 'chat-log'}, glitchView({r, actions: [btn(t('gl.retry'), {kind: 'primary', icon: 'refresh', onClick: () => hubChat(root)})]})));
+      return;
+    }
     const chats = arr(r.chats);
-    if (!AIS.chatId && chats.length) AIS.chatId = chats[0].id;
+    if (AIS.chatId !== 'new' && !chats.some((c) => c.id === AIS.chatId)) AIS.chatId = chats.length ? chats[0].id : 'new';
     listBox.replaceChildren(...(chats.length ? chats.map((c) => {
-      const b = h('button', {type: 'button', class: ['chat-item', c.id === AIS.chatId && 'is-active']}, h('span', {class: 'chat-title'}, c.title), h('span', {class: 'muted small'}, agoText(c.updatedAt)));
+      const b = h('button', {type: 'button', class: ['chat-item', c.id === AIS.chatId && 'is-active'], dataset: {id: c.id}},
+        h('span', {class: 'chat-title'}, c.title), h('span', {class: 'chat-time'}, agoText(c.updatedAt)));
       b.addEventListener('click', () => { AIS.chatId = c.id; hubChat(root); });
       return b;
-    }) : [h('p', {class: 'muted small'}, t('hub.noChats'))]));
-    main.classList.toggle('is-empty', !AIS.chatId);
-    if (AIS.chatId) openChat(main, AIS.chatId, root); else main.replaceChildren(emptyState({icon: 'sparkle', title: t('hub.chatEmptyTitle'), text: t('hub.chatEmptyText')}));
+    }) : [h('p', {class: 'muted small chat-none'}, t('hub.noChats'))]));
+    if (AIS.chatId === 'new') chatWelcome(main, root); else openChat(main, AIS.chatId, root);
   }
   /** Chat text with ``` code blocks; everything goes in as text (no HTML from the AI is ever rendered). */
   function richText(text) {
@@ -4630,28 +4834,97 @@
         const code = nl > 0 ? part.slice(nl + 1) : part;
         out.push(h('div', {class: 'chat-code'}, h('div', {class: 'chat-code-head'}, h('span', {class: 'mono small'}, lang || 'code'), copyButton(code.replace(/\n$/, ''))), h('pre', {dir: 'ltr'}, code.replace(/\n$/, ''))));
       } else if (part.trim()) {
-        for (const para of part.split(/\n{2,}/)) if (para.trim()) {
+        // "### Heading" lines read as bold; **bold** and `code` inside a line
+        const text = part.replace(/^#{1,4}\s+(.+?)\s*#*$/gm, '**$1**').replace(/^\s*-{3,}\s*$/gm, '');
+        for (const para of text.split(/\n{2,}/)) if (para.trim()) {
           const p = h('p', {dir: 'auto'});
-          para.split(/(`[^`\n]+`)/).forEach((seg) => { if (/^`[^`]+`$/.test(seg)) p.appendChild(h('code', null, seg.slice(1, -1))); else p.appendChild(document.createTextNode(seg)); });
+          para.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).forEach((seg) => {
+            if (/^`[^`]+`$/.test(seg)) p.appendChild(h('code', null, seg.slice(1, -1)));
+            else if (/^\*\*[^*]+\*\*$/.test(seg)) p.appendChild(h('strong', null, seg.slice(2, -2)));
+            else p.appendChild(document.createTextNode(seg));
+          });
           out.push(p);
         }
       }
     });
     return out;
   }
+  function chatBubble(m) {
+    const body = h('div', {class: 'chat-bubble'}, richText(m.content));
+    if (m.role === 'user') return h('div', {class: 'chat-msg is-user'}, body);
+    const logo = m.by && PROVIDER_LOGO[m.by.provider];
+    return h('div', {class: 'chat-msg is-assistant'},
+      logo ? h('div', {class: 'chat-avatar is-logo', 'aria-hidden': 'true'}, h('img', {src: '/logos/' + logo + '.svg', alt: '', width: 18, height: 18, draggable: 'false'}))
+        : h('div', {class: 'chat-avatar', 'aria-hidden': 'true'}, icon('sparkle')),
+      h('div', {class: 'chat-col'}, body,
+        h('div', {class: 'chat-meta'},
+          m.by ? h('span', null, m.by.name + (m.by.model ? ' · ' + m.by.model : '')) : null,
+          arr(m.switched).length ? h('span', {class: 'chat-switch'}, t('hub.switched', {list: m.switched.map((x) => x.name + ' (' + t('hub.kind.' + x.kind) + ')').join(', ')})) : null,
+          copyButton(m.content))));
+  }
+  function typingBubble() {
+    return h('div', {class: 'chat-msg is-assistant'},
+      h('div', {class: 'chat-avatar', 'aria-hidden': 'true'}, icon('sparkle')),
+      h('div', {class: 'chat-col'}, h('div', {class: 'chat-bubble chat-typing'},
+        h('span', {class: 'chat-dots', 'aria-hidden': 'true'}, h('i'), h('i'), h('i')), h('span', {class: 'muted small'}, t('hub.thinking')))));
+  }
+  /** The message box: grows with the text, Enter sends, Shift+Enter is a new line. */
+  function chatComposer(onSend, extra) {
+    const input = h('textarea', {class: 'chat-input', rows: 1, placeholder: t('hub.chatPh'), 'aria-label': t('hub.chatPh'), dir: 'auto'});
+    const send = btn(t('hub.send'), {kind: 'primary', iconOnly: true, icon: 'arrow', className: 'chat-send', onClick: () => go()});
+    function go() {
+      const text = input.value.trim();
+      if (text && !send.disabled) onSend(text);
+    }
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); go(); }
+    });
+    const el = h('div', {class: 'chat-compose'},
+      h('div', {class: 'chat-box'}, input, send),
+      h('div', {class: 'chat-compose-foot'}, extra || null, h('span', {class: 'spacer'}), h('span', {class: 'muted small'}, t('hub.sendHint'))));
+    return {el, input, send};
+  }
+  /** Big hello with starter questions, for a chat that has no message yet. */
+  function chatHello(input) {
+    return h('div', {class: 'chat-hello'},
+      h('div', {class: 'chat-hello-mark', 'aria-hidden': 'true'}, icon('sparkle')),
+      h('h2', {class: 'chat-hello-title'}, t('hub.helloTitle')),
+      h('p', {class: 'chat-hello-text'}, t('hub.helloText')),
+      h('div', {class: 'chat-starters'}, CHAT_STARTERS.map((s) => {
+        const b = h('button', {type: 'button', class: 'chat-starter'}, icon(s.icon), h('span', null, t(s.key)));
+        b.addEventListener('click', () => { input.value = t(s.key + 'Q'); input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+        return b;
+      })));
+  }
+  /** A new chat: the hello, a project to ask about, and the box. The first message creates the chat. */
+  function chatWelcome(main, root) {
+    const projSel = h('select', {class: 'select chat-proj', 'aria-label': t('hub.chatProject')},
+      h('option', {value: ''}, t('hub.noProject')), arr(S.state && S.state.projects).map((p) => h('option', {value: p.id}, p.name)));
+    const comp = chatComposer(async (text) => {
+      setBusy(comp.send, true);
+      const r = await api('POST', '/api/ai/chats', {projectId: projSel.value || null});
+      setBusy(comp.send, false);
+      if (!r.ok) return failToast(t('hub.chatFail'), r);
+      AIS.chatId = r.chat.id;
+      AIS.pending = text; // openChat sends it
+      hubChat(root);
+    }, h('label', {class: 'chat-proj-wrap', title: t('hub.chatProject')}, icon('grid'), projSel));
+    main.replaceChildren(
+      h('div', {class: 'chat-head'}, h('b', {class: 'chat-head-title'}, t('hub.newChat')), h('span', {class: 'spacer'}), aiPill()),
+      h('div', {class: 'chat-log'}, chatHello(comp.input)),
+      comp.el);
+    comp.input.focus();
+  }
   async function openChat(main, id, root) {
     const r = await api('GET', '/api/ai/chats/' + enc(id));
-    if (!r.ok) { main.replaceChildren(callout('bad', null, errorText(r))); return; }
+    if (!r.ok) { main.replaceChildren(h('div', {class: 'chat-log'}, glitchView({r, actions: [btn(t('gl.retry'), {kind: 'primary', icon: 'refresh', onClick: () => hubChat(root)})]}))); return; }
     const c = r.chat;
     const log = h('div', {class: 'chat-log', 'aria-live': 'polite'});
-    const bubble = (m) => h('div', {class: ['chat-msg', 'is-' + m.role]},
-      h('div', {class: 'chat-bubble'}, richText(m.content)),
-      m.role === 'assistant' && m.by ? h('div', {class: 'chat-meta muted small'}, icon('sparkle'), ' ' + m.by.name + (m.by.model ? ' · ' + m.by.model : ''),
-        arr(m.switched).length ? h('span', {class: 'chat-switch'}, ' · ' + t('hub.switched', {list: m.switched.map((x) => x.name + ' (' + t('hub.kind.' + x.kind) + ')').join(', ')})) : null) : null);
-    for (const m of arr(c.messages)) log.appendChild(bubble(m));
-    const input = h('textarea', {class: 'input chat-input', rows: 3, placeholder: t('hub.chatPh'), dir: 'auto'});
-    const send = btn(t('hub.send'), {kind: 'primary', icon: 'arrow', onClick: () => doSend()});
-    const del = btn(t('hub.deleteChat'), {kind: 'ghost', size: 'sm', icon: 'trash', onClick: async () => {
+    const scroll = () => { log.scrollTop = log.scrollHeight; };
+    const comp = chatComposer((text) => doSend(text));
+    for (const m of arr(c.messages)) log.appendChild(chatBubble(m));
+    if (!arr(c.messages).length && !AIS.pending) log.appendChild(chatHello(comp.input));
+    const del = btn(t('hub.deleteChat'), {kind: 'ghost', size: 'sm', iconOnly: true, icon: 'trash', onClick: async () => {
       const yes = await confirmDialog({title: t('hub.deleteChatQ'), icon: 'trash', tone: 'bad', size: 'sm', message: c.title, confirmLabel: t('hub.deleteChat'), confirmIcon: 'trash'});
       if (!yes) return;
       await api('POST', '/api/ai/chats/' + enc(c.id) + '/delete', {});
@@ -4659,36 +4932,53 @@
       hubChat(root);
     }});
     const proj = c.projectId ? findProject(c.projectId) : null;
-    async function doSend() {
-      const text = input.value.trim();
-      if (!text) return;
-      log.appendChild(bubble({role: 'user', content: text}));
-      const wait = h('div', {class: 'chat-msg is-assistant'}, h('div', {class: 'chat-bubble row muted'}, spinner(), t('hub.thinking')));
+    const titleEl = h('b', {class: 'chat-head-title'}, c.title);
+    async function doSend(text) {
+      const hello = log.querySelector('.chat-hello');
+      if (hello) hello.remove();
+      log.appendChild(chatBubble({role: 'user', content: text}));
+      const wait = typingBubble();
       log.appendChild(wait);
-      log.scrollTop = log.scrollHeight;
-      input.value = '';
-      setBusy(send, true);
+      scroll();
+      comp.input.value = '';
+      setBusy(comp.send, true);
       const x = await api('POST', '/api/ai/chats/' + enc(c.id) + '/send', {text});
-      setBusy(send, false);
+      setBusy(comp.send, false);
       wait.remove();
       if (!x.ok) {
-        input.value = text;
+        // the question goes back in the box; the glitch view says what happened in plain words
+        comp.input.value = text;
         log.lastChild && log.lastChild.remove();
-        log.appendChild(h('div', {class: 'chat-msg is-error'}, callout('bad', null, h('div', null, errorText(x), x.code === 'NO_AI' ? [' ', btn(t('fix.openHub'), {size: 'sm', icon: 'key', onClick: () => { AIS.tab = 'accounts'; lsSet('devpanel.aiTab', 'accounts'); goPage('ai'); mountAiTabsSync(); }})] : null))));
+        const box = h('div', {class: 'chat-msg is-error'});
+        const retry = btn(t('gl.retry'), {kind: 'primary', size: 'sm', icon: 'refresh', onClick: () => {
+          const again = comp.input.value.trim();
+          box.remove();
+          if (again) doSend(again);
+        }});
+        const hubBtn = x.code === 'NO_AI' ? btn(t('fix.openHub'), {size: 'sm', icon: 'key', onClick: () => aiShowTab('accounts')}) : null;
+        box.appendChild(glitchView({r: x, compact: true, actions: [retry, hubBtn].filter(Boolean)}));
+        log.appendChild(box);
+        scroll();
         return;
       }
-      log.appendChild(bubble(x.reply));
-      log.scrollTop = log.scrollHeight;
-      // the first message names the chat: show the new name in the list and the header
-      if (x.chat && x.chat.title !== c.title) { c.title = x.chat.title; hubChat(root); }
+      log.appendChild(chatBubble(x.reply));
+      scroll();
+      comp.input.focus();
+      // the first message names the chat: show the new name in the header and the list
+      if (x.chat && x.chat.title !== c.title) {
+        c.title = x.chat.title;
+        titleEl.textContent = c.title;
+        const item = root.querySelector('.chat-item.is-active .chat-title');
+        if (item) item.textContent = c.title;
+      }
     }
-    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); doSend(); } });
     main.replaceChildren(
-      h('div', {class: 'row chat-head'}, h('b', null, c.title), proj ? chip(proj.name, {icon: 'grid'}) : null, h('span', {class: 'spacer'}), del),
+      h('div', {class: 'chat-head'}, titleEl, proj ? chip(proj.name, {icon: 'grid'}) : null, h('span', {class: 'spacer'}), aiPill(), del),
       log,
-      h('div', {class: 'chat-compose'}, input, h('div', {class: 'row'}, h('span', {class: 'muted small'}, t('hub.sendHint')), h('span', {class: 'spacer'}), send)));
-    log.scrollTop = log.scrollHeight;
-    input.focus();
+      comp.el);
+    scroll();
+    comp.input.focus();
+    if (AIS.pending) { const p = AIS.pending; AIS.pending = null; doSend(p); }
   }
   function mountAiTabsSync() { aiRender(); }
 

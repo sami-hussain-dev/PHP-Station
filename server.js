@@ -80,6 +80,13 @@ const STATIC = {
   '/i18n.js': { file: 'i18n.js', type: 'text/javascript; charset=utf-8' },
   '/qr.js': { file: 'qr.js', type: 'text/javascript; charset=utf-8' },
 };
+// AI provider logos on the AI page (lobe-icons, MIT): served from public/logos, never fetched from the web
+for (const n of ['anthropic', 'cerebras', 'deepseek', 'gemini', 'github', 'groq', 'mistral', 'ollama', 'openai', 'openrouter', 'pollinations']) {
+  STATIC[`/logos/${n}.svg`] = { file: `logos/${n}.svg`, type: 'image/svg+xml' };
+}
+// The error art (deep sea, a shark biting the network cable): its own <style> animates it, so it gets a CSP
+// that allows inline style and nothing else (no script, no outside files).
+STATIC['/shark.svg'] = { file: 'shark.svg', type: 'image/svg+xml', csp: "default-src 'none'; style-src 'unsafe-inline'" };
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const BROWSERS = [
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
@@ -430,7 +437,7 @@ async function serveIndex(ctx, res) {
   try {
     html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8');
   } catch {
-    sendText(res, 500, tr('http.indexMissing'));
+    sendPage(res, 500, { title: tr('http.brokenTitle'), text: tr('http.indexMissing'), bad: true });
     return;
   }
   html = html.split('__DEVPANEL_TOKEN__').join(ctx.token);
@@ -449,8 +456,51 @@ function serveStatic(res, item) {
     return;
   }
   baseHeaders(res);
+  if (item.csp) res.setHeader('Content-Security-Policy', item.csp);
   res.writeHead(200, { 'Content-Type': item.type, 'Content-Length': data.length, 'Cache-Control': 'no-cache' });
   res.end(data);
+}
+
+/**
+ * The browser tab comes back here after the OpenRouter login. The one-time `state` made by the panel
+ * (behind the token) is what makes this safe without the token; the key never reaches the page.
+ */
+async function oauthReturn(ctx, q, res) {
+  let ok = true;
+  let msg;
+  try {
+    const r = await ai.finishOpenRouterLogin(ctx, { code: q.get('code'), state: q.get('state') });
+    msg = r.test && r.test.ok ? tr('ai.loginDone', { model: r.test.model }) : tr('ai.loginSaved');
+  } catch (e) {
+    ok = false;
+    msg = e.message;
+  }
+  sendPage(res, ok ? 200 : 400, { title: ok ? tr('ai.loginTitleOk') : tr('ai.loginTitleBad'), text: msg, bad: !ok });
+}
+
+/**
+ * A small standalone page in the panel's black & silver (no script at all). A bad outcome shows the
+ * deep-sea art (a shark biting the network cable) instead of a bare error text; `home` adds a link back.
+ */
+function sendPage(res, status, { title, text, bad = false, home = false }) {
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const lang = i18n.getLang(); // Urdu reads right to left; Roman Urdu is "ur-Latn"
+  const htmlLang = lang === 'ur' ? 'ur" dir="rtl' : lang === 'roman' ? 'ur-Latn' : 'en';
+  const html = `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PHP Station</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0b0c;color:#e6e6e6;font:16px/1.5 "Segoe UI",system-ui,sans-serif}
+main{width:min(640px,calc(100vw - 32px));margin:16px;border:1px solid #2c2c30;border-radius:16px;background:#141416;overflow:hidden}
+.art{display:block;width:100%;height:auto;aspect-ratio:16/9;border-bottom:1px solid #2c2c30}.in{padding:24px 28px}
+h1{font-size:21px;margin:0 0 8px;color:#f2f3f5}p{margin:0;color:#a9a9b0}
+.go{display:inline-block;margin-top:18px;padding:9px 16px;border-radius:10px;background:linear-gradient(180deg,#f4f5f7,#c9ccd2);color:#0b0c0e;font-weight:600;text-decoration:none}
+footer{margin-top:20px;padding-top:14px;border-top:1px solid #2c2c30;font-size:13px;color:#8a8a92}footer a{color:#d9d9de}</style></head>
+<body><main>${bad ? '<img class="art" src="/shark.svg" alt="" width="640" height="360">' : ''}<div class="in"><h1>${esc(title)}</h1><p>${esc(text)}</p>
+${home ? `<a class="go" href="/">${esc(tr('http.openPanel'))}</a>` : ''}
+<footer>PHP Station · Sami Hussain, <a href="https://x8code.com" target="_blank" rel="noopener">x8code.com</a></footer></div></main></body></html>`;
+  const body = Buffer.from(html);
+  baseHeaders(res);
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"); // no script at all
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length, 'Cache-Control': 'no-store' });
+  res.end(body);
 }
 
 async function handle(ctx, req, res) {
@@ -473,7 +523,8 @@ async function handle(ctx, req, res) {
     if (pathname === '/' || pathname === '/index.html') { await serveIndex(ctx, res); return; }
     if (STATIC[pathname]) { serveStatic(res, STATIC[pathname]); return; }
     if (pathname.startsWith('/mail-view/')) { mailcatch.serveView(ctx, pathname, url.searchParams, res); return; }
-    sendText(res, 404, tr('http.notFound'));
+    if (pathname === '/oauth/openrouter') { await oauthReturn(ctx, url.searchParams, res); return; }
+    sendPage(res, 404, { title: tr('http.lostTitle'), text: tr('http.lostText'), bad: true, home: true });
     return;
   }
 
@@ -895,6 +946,12 @@ route('POST', '/api/ai/accounts/:id/update', (ctx, { params, body }) => ({ accou
 route('POST', '/api/ai/accounts/:id/remove', (ctx, { params, body }) => { needConfirm(body); return ai.remove(ctx, params.id); });
 route('POST', '/api/ai/accounts/:id/test', (ctx, { params }) => ai.test(ctx, params.id));
 route('GET', '/api/ai/accounts/:id/models', (ctx, { params }) => ai.models(ctx, params.id));
+// connect without copy-paste: OpenRouter login, the key caught from the clipboard, keys already on this PC
+route('POST', '/api/ai/login/openrouter', (ctx) => ai.startOpenRouterLogin(ctx));
+route('POST', '/api/ai/accounts/:id/catch-key', (ctx, { params }) => ai.catchKey(ctx, params.id));
+route('POST', '/api/ai/catch-stop', () => ai.stopCatch());
+route('GET', '/api/ai/found-keys', (ctx) => ai.foundKeys(ctx));
+route('POST', '/api/ai/found-keys/import', (ctx, { body }) => ai.importFound(ctx, body.ids));
 route('GET', '/api/ai/chats', (ctx) => ai.listChats(ctx));
 route('POST', '/api/ai/chats', (ctx, { body }) => ai.newChat(ctx, body));
 route('GET', '/api/ai/chats/:id', (ctx, { params }) => ({ chat: ai.getChat(ctx, params.id) }));
